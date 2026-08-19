@@ -278,7 +278,8 @@ with open(index_path, "w", newline="", encoding="utf-8-sig") as fh:
 # 날짜 폴더로 재현되지 않는 것만 (지시문 통합본은 중복이라 제외)
 ref = os.path.join(OUT, "_reference")
 os.makedirs(ref, exist_ok=True)
-for f in ("sessions-all.csv", "daily-activity.csv", "commits.jsonl"):
+for f in ("sessions-all.csv", "daily-activity.csv", "commits.jsonl",
+          "coverage.json", "coverage-commits.json", "coverage-diffs.json"):
     src = os.path.join(dig, f)
     if os.path.exists(src):
         shutil.copy2(src, os.path.join(ref, f))
@@ -315,6 +316,7 @@ L += ["", "## 구조", "", "```",
       "_reference/",
       "  sessions-all.csv           전체 세션 인덱스 (지시 없는 세션 포함)",
       "  daily-activity.csv         일별 세션·지시·툴호출 집계",
+      "  coverage*.json             수집 커버리지 — 무엇을 못 담았고 왜인지",
       "```", "", "## 읽는 법", "",
       "- `instructions.md` 의 각 항목 제목은 `시각 · 도구 · 작업디렉토리 · git브랜치` 입니다.",
       "- 세션이 자정을 넘긴 경우, 지시는 실제 입력 시각 기준으로 그날에 들어갑니다.",

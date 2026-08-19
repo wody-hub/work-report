@@ -141,6 +141,7 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     stat = Counter()
     mask_hits = Counter()
+    missing = []          # patch 에 못 담긴 커밋과 사유
 
     for day in sorted(by_date):
         chunks, size, oversized = [], 0, []
@@ -151,12 +152,15 @@ def main():
             repo = resolve(c["repo"])
             if not repo or not os.path.isdir(repo):
                 stat["저장소 못찾음"] += 1
+                missing.append((c["hash"], "저장소 못찾음"))
                 continue
             raw = subprocess.run(
                 ["git", "-C", repo, "show", c["hash"], "--no-color",
                  "--format=", "--unified=3"],
                 capture_output=True, text=True, errors="replace", timeout=120).stdout
             if not raw.strip():
+                stat["변경 없음"] += 1
+                missing.append((c["hash"], "변경 파일 없음"))
                 continue
 
             kept = []
@@ -176,6 +180,8 @@ def main():
                     stat["파일 잘림"] += 1
                 kept.append("\n".join(lines))
             if not kept:
+                stat["전부 제외 규칙"] += 1
+                missing.append((c["hash"], "변경 파일이 전부 제외 규칙"))
                 continue
 
             body = "\n".join(kept)
@@ -196,6 +202,7 @@ def main():
                 oversized.append((c["hash"], c["subject"],
                                   len(piece.encode()) // 1024))
                 stat["용량 초과로 건너뜀"] += 1
+                missing.append((c["hash"], "하루 용량 상한 초과"))
                 continue
             chunks.append(piece)
             size += len(piece.encode())
@@ -223,6 +230,22 @@ def main():
         print("  " + ", ".join(detail))
     if mask_hits:
         print("  마스킹: " + ", ".join(f"{k} {v}" for k, v in mask_hits.most_common()))
+
+    nonmerge = sum(1 for rows in by_date.values() for c in rows if not c.get("is_merge"))
+    covered = stat["커밋 포함"]
+    pct = covered / nonmerge * 100 if nonmerge else 100
+    reasons = Counter(r for _h, r in missing)
+    unexplained = reasons.get("저장소 못찾음", 0) + reasons.get("하루 용량 상한 초과", 0)
+    color = "33" if unexplained else "0"
+    print(f"  \033[{color}m커버리지: 머지 아닌 커밋 {nonmerge:,}개 중 "
+          f"{covered:,}개 포함 ({pct:.0f}%)\033[0m")
+    if reasons:
+        print("  미포함 사유: " + ", ".join(f"{k} {v}" for k, v in reasons.most_common()))
+    cov = {"nonmerge_commits": nonmerge, "in_patch": covered,
+           "coverage_pct": round(pct, 1), "missing_reasons": dict(reasons),
+           "missing": [{"hash": h, "reason": r} for h, r in missing]}
+    with open(os.path.join(dig, "coverage-diffs.json"), "w", encoding="utf-8") as fh:
+        json.dump(cov, fh, ensure_ascii=False, indent=1)
 
 
 if __name__ == "__main__":

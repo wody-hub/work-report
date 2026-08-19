@@ -191,6 +191,11 @@ def main():
     print(f"  저장소 {nrepo}개 / 커밋 {len(all_rows):,}개 / {days}일")
     if dups:
         print(f"  포크·클론 중복 제거 {dups:,}건")
+    with open(os.path.join(dig, "coverage-commits.json"), "w", encoding="utf-8") as fh:
+        json.dump({"repos_with_commits": nrepo, "commits": len(all_rows),
+                   "fork_duplicates_removed": dups,
+                   "merges": sum(1 for r in all_rows if r["is_merge"]),
+                   "authors": emails}, fh, ensure_ascii=False, indent=1)
     if all_rows:
         t = Counter(r["type"] for r in all_rows if r["type"])
         print("  타입:", ", ".join(f"{k} {v}" for k, v in t.most_common(6)))

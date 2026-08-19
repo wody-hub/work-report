@@ -43,6 +43,9 @@ MAX_CHARS = int(os.environ.get("WORK_MAX_CHARS", "10000"))
 MASK = os.environ.get("WORK_MASK", "1") not in ("0", "", "false", "no")
 MASK_HITS = Counter()
 
+# 무엇을 못 담았는지 스스로 기록한다. 조용한 누락이 가장 위험하다.
+COVERAGE = Counter()
+
 
 def redact(text):
     if not MASK:
@@ -230,7 +233,10 @@ def claude_projects(label, target):
                     break
             if cwd:
                 break
-        if cwd and under(cwd, target):
+        if cwd is None:
+            COVERAGE["claude_cwd_판정실패_디렉토리"] += 1
+            COVERAGE["claude_cwd_판정실패_파일"] += len(files)
+        elif under(cwd, target):
             hits.append((d, ppath, cwd, files))
     return hits
 
@@ -364,13 +370,20 @@ def scan_codex():
     if not os.path.isdir(CODEX_SESS):
         return sessions, prompts, tools, models, id_map
     for f in sorted(glob.glob(CODEX_SESS + "/**/*.jsonl", recursive=True)):
+        COVERAGE["codex_전체파일"] += 1
         meta = codex_meta(f)
-        if not meta or not meta.get("cwd"):
+        if not meta:
+            COVERAGE["codex_메타없음"] += 1
+            continue
+        if not meta.get("cwd"):
+            COVERAGE["codex_cwd없음"] += 1
             continue
         cwd = meta.get("cwd") or ""
         hit = match_target(cwd)
         if not hit:
+            COVERAGE["codex_대상경로밖"] += 1
             continue
+        COVERAGE["codex_수집"] += 1
         sid = meta.get("id") or os.path.splitext(os.path.basename(f))[0]
         root = meta.get("session_id") or sid
         parent = meta.get("parent_thread_id")
@@ -599,6 +612,16 @@ def main():
 
     if MASK_HITS:
         print("  마스킹: " + ", ".join(f"{k} {v}" for k, v in MASK_HITS.most_common()))
+
+    # 담지 못한 것을 반드시 드러낸다
+    gaps = {k: v for k, v in COVERAGE.items()
+            if v and k not in ("codex_전체파일", "codex_수집", "codex_대상경로밖")}
+    if gaps:
+        print("  \033[33m누락: " + ", ".join(f"{k} {v}" for k, v in gaps.items())
+              + "\033[0m")
+    with open(os.path.join(dig, "coverage.json"), "w", encoding="utf-8") as fh:
+        json.dump({"sessions": dict(COVERAGE), "mask": dict(MASK_HITS)},
+                  fh, ensure_ascii=False, indent=1)
 
     # ---- digest
     print("digest 생성 …")
