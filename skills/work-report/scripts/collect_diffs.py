@@ -143,7 +143,7 @@ def main():
     mask_hits = Counter()
 
     for day in sorted(by_date):
-        chunks, size, truncated_day = [], 0, False
+        chunks, size, oversized = [], 0, []
         for c in sorted(by_date[day], key=lambda x: x["timestamp"]):
             if c.get("is_merge"):
                 stat["머지 건너뜀"] += 1
@@ -190,19 +190,25 @@ def main():
                    f"subject {c['subject']}\n"
                    f"{'=' * 78}\n")
             piece = hdr + body + "\n"
+            # 큰 커밋 하나 때문에 그날 나머지까지 버리면 안 된다.
+            # 이 커밋만 건너뛰고 다음 커밋을 계속 담는다.
             if size + len(piece.encode()) > MAX_DAY_BYTES:
-                truncated_day = True
-                break
+                oversized.append((c["hash"], c["subject"],
+                                  len(piece.encode()) // 1024))
+                stat["용량 초과로 건너뜀"] += 1
+                continue
             chunks.append(piece)
             size += len(piece.encode())
             stat["커밋 포함"] += 1
 
         if not chunks:
             continue
-        if truncated_day:
-            chunks.append(f"\n... [하루 상한 {MAX_DAY_BYTES // 1024}KB 초과 — "
-                          "이후 커밋 생략. commits.csv 로 전체 목록 확인]\n")
-            stat["하루 상한 초과"] += 1
+        if oversized:
+            note = [f"\n... [하루 상한 {MAX_DAY_BYTES // 1024}KB 로 아래 커밋의 "
+                    "diff 는 생략했습니다. 커밋 자체는 commits.csv 에 있습니다]"]
+            for h, subj, kb in oversized:
+                note.append(f"...   {h}  {kb}KB  {subj}")
+            chunks.append("\n".join(note) + "\n")
         with open(os.path.join(outdir, f"{day}.patch"), "w", encoding="utf-8") as fh:
             fh.write("".join(chunks))
         stat["날짜 파일"] += 1

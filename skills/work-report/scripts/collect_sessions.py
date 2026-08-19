@@ -310,6 +310,40 @@ CODEX_INJECTED = ("<skill>", "<recommended_plugins>", "<turn_aborted>",
 CODEX_AGENT_TASK = ("<task>",)
 
 
+# 구형 Codex(2025년경)는 session_meta 가 없고 첫 줄에 id/timestamp/git 이 있으며
+# cwd 는 첫 user 메시지의 <environment_context> 안에 들어 있다.
+CWD_TAG_RE = re.compile(r"<cwd>([^<]+)</cwd>")
+
+
+def codex_meta(path):
+    """세션 메타를 찾는다. 신형은 session_meta, 구형은 헤더+환경블록에서 복원."""
+    head = None
+    for i, o in enumerate(jlines(path)):
+        if o.get("type") == "session_meta":
+            return o.get("payload") or {}
+        if head is None and o.get("id") and o.get("timestamp"):
+            head = o          # 구형 헤더
+        if i > 25:
+            break
+    if head is None:
+        return None
+    # 구형: cwd 를 환경 컨텍스트에서 뽑는다
+    cwd = ""
+    for i, o in enumerate(jlines(path)):
+        m = CWD_TAG_RE.search(json.dumps(o, ensure_ascii=False))
+        if m:
+            cwd = m.group(1)
+            break
+        if i > 60:
+            break
+    git = head.get("git")
+    if isinstance(git, str):
+        git = None            # 구형은 문자열로 직렬화된 경우가 있다
+    return {"id": head.get("id"), "session_id": head.get("id"),
+            "timestamp": head.get("timestamp"), "cwd": cwd,
+            "originator": head.get("originator", ""), "git": git}
+
+
 def codex_input_text(payload):
     return "\n".join(b.get("text", "") for b in payload.get("content") or []
                      if isinstance(b, dict) and b.get("type") in ("input_text", "text")).strip()
@@ -330,14 +364,8 @@ def scan_codex():
     if not os.path.isdir(CODEX_SESS):
         return sessions, prompts, tools, models, id_map
     for f in sorted(glob.glob(CODEX_SESS + "/**/*.jsonl", recursive=True)):
-        meta = None
-        for i, o in enumerate(jlines(f)):
-            if o.get("type") == "session_meta":
-                meta = o.get("payload") or {}
-                break
-            if i > 25:
-                break
-        if not meta:
+        meta = codex_meta(f)
+        if not meta or not meta.get("cwd"):
             continue
         cwd = meta.get("cwd") or ""
         hit = match_target(cwd)
@@ -364,9 +392,10 @@ def scan_codex():
                     r["first"] = ts
                 if not r["last"] or ts > r["last"]:
                     r["last"] = ts
+            # 신형은 payload 안에, 구형은 최상위에 레코드가 있다
             p = o.get("payload")
             if not isinstance(p, dict):
-                continue
+                p = o
             pt = p.get("type")
             t, src = None, ""
             if pt == "user_message":

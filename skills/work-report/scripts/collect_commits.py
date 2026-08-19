@@ -166,7 +166,22 @@ def main():
             if rows:
                 nrepo += 1
                 all_rows.extend(rows)
-    all_rows.sort(key=lambda r: r["timestamp"])
+    # 포크·클론 관계인 저장소들은 같은 커밋을 공유한다. 해시로 중복을 제거하지
+    # 않으면 한 번 한 작업이 여러 번 계산된다. 어느 저장소에도 있었는지는
+    # also_in 에 남긴다.
+    all_rows.sort(key=lambda r: (r["timestamp"], r["repo"]))
+    uniq, seen_hash, dups = [], {}, 0
+    for r in all_rows:
+        first = seen_hash.get(r["hash"])
+        if first is None:
+            seen_hash[r["hash"]] = r
+            r["also_in"] = []
+            uniq.append(r)
+        else:
+            if r["repo"] not in first["also_in"] and r["repo"] != first["repo"]:
+                first["also_in"].append(r["repo"])
+            dups += 1
+    all_rows = uniq
 
     with open(os.path.join(dig, "commits.jsonl"), "w", encoding="utf-8") as fh:
         for r in all_rows:
@@ -174,6 +189,8 @@ def main():
 
     days = len({r["date"] for r in all_rows})
     print(f"  저장소 {nrepo}개 / 커밋 {len(all_rows):,}개 / {days}일")
+    if dups:
+        print(f"  포크·클론 중복 제거 {dups:,}건")
     if all_rows:
         t = Counter(r["type"] for r in all_rows if r["type"])
         print("  타입:", ", ".join(f"{k} {v}" for k, v in t.most_common(6)))

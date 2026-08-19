@@ -93,7 +93,7 @@ if os.path.exists(_cf):
         commits_by_date[c["date"]].append(c)
 
 COMMIT_COLS = ["시각", "저장소", "브랜치", "커밋", "타입", "영역", "제목",
-               "파일수", "추가", "삭제", "머지"]
+               "파일수", "추가", "삭제", "머지", "동일커밋 존재 저장소"]
 
 DIFF_DIR = os.path.join(dig, "diffs")
 
@@ -112,7 +112,8 @@ def write_commits(path, rows):
                         "" if merge else c["files"],
                         "" if merge else c["insertions"],
                         "" if merge else c["deletions"],
-                        "Y" if merge else ""])
+                        "Y" if merge else "",
+                        ", ".join(c.get("also_in") or [])])
 
 with open(os.path.join(dig, "sessions-all.csv"), encoding="utf-8-sig") as fh:
     rd = csv.reader(fh)
