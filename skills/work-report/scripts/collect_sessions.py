@@ -398,6 +398,10 @@ def scan_codex():
         if sess_branch:
             r["branches"].add(sess_branch)
         seen_text = set()
+        # 응답 수는 두 형태로 기록된다. response_item/message(role=assistant)와
+        # event_msg/agent_message 가 같은 턴을 가리키는 경우가 있어 더하면
+        # 중복 계산된다. 각각 세고 큰 쪽을 쓴다.
+        n_assistant = n_agent_msg = 0
         # 구형 포맷은 레코드에 타임스탬프가 없다. 세션 시작 시각으로 채운다.
         # (세션이 자정을 넘기면 날짜가 어긋날 수 있어 ts_source 로 표시한다)
         fallback_ts = meta.get("timestamp")
@@ -449,8 +453,17 @@ def scan_codex():
                                         text=body,
                                         **({"orig_chars": orig} if orig else {})))
                 continue
+            # 모델명은 turn_context 의 '최상위' type 에 payload 로 붙는다.
+            # payload.type 으로 보면 영원히 안 잡힌다.
+            if o.get("type") == "turn_context" and isinstance(o.get("payload"), dict):
+                m = o["payload"].get("model")
+                if m:
+                    r["models"].add(m)
+                    models[m] += 1
             if pt == "agent_message":
-                r["replies"] += 1
+                n_agent_msg += 1
+            elif pt == "message" and p.get("role") == "assistant":
+                n_assistant += 1
             elif pt in ("function_call", "custom_tool_call", "local_shell_call"):
                 r["tool_calls"] += 1
                 tools[p.get("name") or pt] += 1
@@ -460,9 +473,7 @@ def scan_codex():
                     r["in_tok"] = max(r["in_tok"], tu.get("input_tokens") or 0)
                     r["out_tok"] = max(r["out_tok"], tu.get("output_tokens") or 0)
                     r["cache_r"] = max(r["cache_r"], tu.get("cached_input_tokens") or 0)
-            elif pt == "turn_context" and p.get("model"):
-                r["models"].add(p["model"])
-                models[p["model"]] += 1
+        r["replies"] = max(n_assistant, n_agent_msg)
         sessions.append(r)
         id_map[sid] = r
         id_map[root] = r
