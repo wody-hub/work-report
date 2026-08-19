@@ -43,6 +43,34 @@ fi
 
 : "${WORK_TARGETS:?config.env 에 WORK_TARGETS 를 설정하세요 (콜론 구분 경로)}"
 : "${WORK_DIR:?config.env 에 WORK_DIR 를 설정하세요 (결과를 둘 폴더)}"
+
+# 설정 파일이 있어도 값이 템플릿 그대로일 수 있다. 실재하는 경로가 하나도
+# 없으면 미설정으로 보고 --init 로 안내한다. 그냥 진행하면 '세션 0개' 라는
+# 애매한 실패로 끝난다.
+_found=0
+_IFS_BAK="$IFS"; IFS=':'
+for _p in $WORK_TARGETS; do
+  [ -n "$_p" ] && [ -d "$_p" ] && _found=1
+done
+IFS="$_IFS_BAK"
+if [ "$_found" -eq 0 ]; then
+  cat >&2 <<EOF
+설정이 아직 완성되지 않았습니다.
+
+  설정 파일: $CONFIG
+  WORK_TARGETS: $WORK_TARGETS
+  → 이 경로들이 존재하지 않습니다 (템플릿 예시값이거나 경로가 바뀌었습니다)
+
+세션 로그를 스캔해 실제 작업 경로 후보를 뽑습니다:
+
+  $(basename "${BASH_SOURCE[0]}") --init
+
+후보에서 경로를 고른 뒤:
+
+  $(basename "${BASH_SOURCE[0]}") --init --write "경로1:경로2" "결과폴더" "내이메일"
+EOF
+  exit 1
+fi
 export WORK_TARGETS
 export WORK_TZ_OFFSET="${WORK_TZ_OFFSET:-9}"
 export WORK_MAX_CHARS="${WORK_MAX_CHARS:-10000}"

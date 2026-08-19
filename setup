@@ -79,10 +79,23 @@ if [ -f "$CONFIG" ]; then
   echo "  설정: $CONFIG (이미 있음 — 그대로 둡니다)"
 else
   cp "$INSTALL_DIR/config.template.env" "$CONFIG"
-  echo "  설정: $CONFIG 생성"
-  echo ""
-  echo "  ⚠ 이 파일을 열어 WORK_TARGETS 와 WORK_DIR 를 채우세요."
+  echo "  설정: $CONFIG 생성 (예시값 상태 — 아직 쓸 수 없습니다)"
+  NEED_INIT=1
 fi
 
 echo ""
-echo "완료. 새 세션을 열고 /work-report 를 확인하세요."
+if [ "${NEED_INIT:-0}" = "1" ]; then
+  echo "다음: 수집할 경로를 정합니다. 세션 로그에서 후보를 뽑습니다."
+  echo ""
+  python3 "$SKILL_SRC/scripts/init_config.py" 2>/dev/null || {
+    echo "  (세션 로그를 아직 찾지 못했습니다. Claude Code 나 Codex 를 사용한 뒤"
+    echo "   scripts/run.sh --init 을 실행하세요)"
+  }
+  echo ""
+  echo "위 후보에서 골라 설정을 만듭니다 (여러 개는 콜론으로 이음):"
+  echo "  $SKILL_SRC/scripts/run.sh --init --write \"경로1:경로2\" \"결과폴더\" \"내이메일\""
+  echo ""
+  echo "세션에서 /work-report 를 실행하면 이 과정을 안내해 줍니다."
+else
+  echo "완료. 새 세션을 열고 /work-report 를 확인하세요."
+fi
