@@ -314,6 +314,8 @@ $WORK_DIR/
 | `instructions.jsonl` | 같은 내용 구조화 (`tool`, `scope`, `cwd`, `branch`, `timestamp`, `bucket`, `text`) |
 
 `timestamp` 는 `WORK_TZ_OFFSET` 을 적용한 ISO 8601(오프셋 포함)이다. `commits.jsonl` 도 같은 기준이라 지시와 커밋을 바로 짝지을 수 있다.
+
+`branch` 는 Claude Code 는 로그의 `gitBranch`, Codex 는 `session_meta.git.branch` 에서 온다. Codex 는 세션에 git 정보가 없는 경우가 있어 일부는 비어 있다.
 | `agent-tasks.md\|.jsonl` | AI 가 만든 지시 — `agent-task`, `generated` (있는 날만) |
 | `commits.csv` | 그날 내 git 커밋 (있는 날만) |
 | `sessions.csv` | 그날 지시가 있었던 세션 인덱스 |
@@ -347,6 +349,8 @@ $WORK_DIR/
 ### commits.csv 열
 
 `시각 · 저장소 · 브랜치 · 커밋 · 타입 · 영역 · 제목 · 파일수 · 추가 · 삭제 · 머지`
+
+머지 커밋은 `파일수·추가·삭제` 가 **빈칸**이다. git 이 머지에는 변경량을 계산하지 않으므로, 0 으로 쓰면 "변경 없음" 으로 잘못 읽힌다. `index.csv` 의 추가줄·삭제줄 합계에서도 머지는 빠진다.
 
 `타입`·`영역` 은 conventional commit(`feat(notification): …`)에서 파싱한다. 규칙을 안 쓰는 저장소면 비어 있고 `제목` 만 채워진다.
 

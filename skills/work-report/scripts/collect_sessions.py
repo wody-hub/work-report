@@ -353,8 +353,9 @@ def scan_codex():
                         first=meta.get("timestamp"),
                         originator=meta.get("originator", ""))
         g = meta.get("git")
-        if isinstance(g, dict) and g.get("branch"):
-            r["branches"].add(g["branch"])
+        sess_branch = g.get("branch") if isinstance(g, dict) else None
+        if sess_branch:
+            r["branches"].add(sess_branch)
         seen_text = set()
         for o in jlines(f):
             ts = o.get("timestamp")
@@ -373,7 +374,9 @@ def scan_codex():
             elif pt == "message" and p.get("role") == "user":
                 t, src = codex_input_text(p), "response_item"
             if t is not None:
-                key = re.sub(r"\s+", " ", t)[:400]
+                # 정규화한 '전문' 으로 중복 판정한다. 앞 400자만 보면 서두가
+                # 같고 뒤가 다른 지시(계획서 재검토 요청 등)가 유실된다.
+                key = re.sub(r"\s+", " ", t)
                 if t and not t.startswith(CODEX_PLUMBING) and key not in seen_text:
                     seen_text.add(key)
                     lead = t.lstrip()
@@ -391,7 +394,8 @@ def scan_codex():
                     prompts.append(dict(tool="codex", scope=hit[0], session_id=sid,
                                         kind=r["kind"], cwd=cwd,
                                         timestamp=iso_local(ts),
-                                        branch="", source=src, bucket=bucket,
+                                        branch=sess_branch or "",
+                                        source=src, bucket=bucket,
                                         text=body,
                                         **({"orig_chars": orig} if orig else {})))
                 continue

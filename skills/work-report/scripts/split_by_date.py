@@ -104,10 +104,15 @@ def write_commits(path, rows):
         w = csv.writer(fh)
         w.writerow(COMMIT_COLS)
         for c in rows:
+            # 머지 커밋은 git 이 변경량을 계산하지 않는다. 0 으로 쓰면
+            # '변경 없음' 으로 읽히므로 빈칸으로 둔다.
+            merge = c["is_merge"]
             w.writerow([c["time"], c["repo"], c["branch"], c["hash"], c["type"],
-                        c["conv_scope"], c["subject"], c["files"],
-                        c["insertions"], c["deletions"],
-                        "Y" if c["is_merge"] else ""])
+                        c["conv_scope"], c["subject"],
+                        "" if merge else c["files"],
+                        "" if merge else c["insertions"],
+                        "" if merge else c["deletions"],
+                        "Y" if merge else ""])
 
 with open(os.path.join(dig, "sessions-all.csv"), encoding="utf-8-sig") as fh:
     rd = csv.reader(fh)
@@ -229,8 +234,8 @@ for day in sorted(set(by_date) | set(commits_by_date)):
         day, wd, len(items),
         tools.get("claude-code", 0), tools.get("codex", 0), len(agent), len(sids),
         len(daycommits),
-        sum(c["insertions"] for c in daycommits),
-        sum(c["deletions"] for c in daycommits),
+        sum(c["insertions"] for c in daycommits if not c["is_merge"]),
+        sum(c["deletions"] for c in daycommits if not c["is_merge"]),
         start, end,
         " / ".join(f"{k}({v})" for k, v in cwds.most_common(5)),
     ])
