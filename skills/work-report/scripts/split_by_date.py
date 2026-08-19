@@ -46,10 +46,19 @@ def load_targets():
 
 
 TARGETS = load_targets()
-if len(sys.argv) < 3:
-    sys.exit("사용법: split_by_date.py <수집경로> <출력경로>")
-SRC = os.path.abspath(os.path.expanduser(sys.argv[1]))
-OUT = os.path.abspath(os.path.expanduser(sys.argv[2]))
+POS = [a for a in sys.argv[1:] if not a.startswith("--")]
+if len(POS) < 2:
+    sys.exit("사용법: split_by_date.py <수집경로> <출력경로> [--only=YYYY-MM-DD,…]")
+SRC = os.path.abspath(os.path.expanduser(POS[0]))
+OUT = os.path.abspath(os.path.expanduser(POS[1]))
+
+# 특정 날짜만 갱신 (당일 운영용). 지정하면 다른 날짜 폴더는 건드리지 않는다.
+ONLY = set()
+for a in sys.argv[1:]:
+    if a.startswith("--only="):
+        ONLY |= {d.strip() for d in a[len("--only="):].split(",") if d.strip()}
+if not ONLY and os.environ.get("WORK_ONLY_DATES", "").strip():
+    ONLY |= {d.strip() for d in os.environ["WORK_ONLY_DATES"].split(",") if d.strip()}
 
 
 def short(cwd):
@@ -114,9 +123,12 @@ for p in instructions:
     (undated if dt is None else by_date[dt.strftime("%Y-%m-%d")]).append(
         p if dt is None else (dt, p))
 
-if os.path.exists(OUT):
-    shutil.rmtree(OUT)
-os.makedirs(OUT)
+if ONLY:
+    os.makedirs(OUT, exist_ok=True)      # 증분: 기존 날짜 폴더를 보존한다
+else:
+    if os.path.exists(OUT):
+        shutil.rmtree(OUT)
+    os.makedirs(OUT)
 
 
 def write_day_md(path, day, items, title, note=""):
@@ -146,6 +158,8 @@ index_rows = []
 # 지시가 있는 날 + 커밋이 있는 날의 합집합.
 # AI 없이 작업한 날도 실적이므로 커밋만 있는 날에도 폴더를 만든다.
 for day in sorted(set(by_date) | set(commits_by_date)):
+    if ONLY and day not in ONLY:
+        continue
     allitems = sorted(by_date.get(day, []), key=lambda x: x[0])
     daycommits = commits_by_date.get(day, [])
     if not allitems and not daycommits:
@@ -220,15 +234,32 @@ if undated:
         for p in undated:
             fh.write(json.dumps(p, ensure_ascii=False) + "\n")
 
+INDEX_COLS = ["날짜", "요일", "지시수", "claude-code", "codex", "에이전트작업",
+              "세션수", "커밋수", "추가줄", "삭제줄", "시작", "종료",
+              "작업대상(상위5)"]
+index_path = os.path.join(OUT, "index.csv")
+
 if not index_rows:
+    if ONLY:
+        print(f"대상 날짜에 데이터가 없습니다: {', '.join(sorted(ONLY))}")
+        sys.exit(0)
     sys.exit("날짜별로 분류할 지시가 없습니다.")
 
-with open(os.path.join(OUT, "index.csv"), "w", newline="", encoding="utf-8-sig") as fh:
+# 증분 실행이면 기존 index 를 읽어 해당 날짜만 갈아끼운다
+merged = {r[0]: r for r in index_rows}
+if ONLY and os.path.exists(index_path):
+    with open(index_path, encoding="utf-8-sig") as fh:
+        rd = csv.reader(fh)
+        next(rd, None)
+        for row in rd:
+            if row and row[0] not in merged:
+                merged[row[0]] = row
+
+with open(index_path, "w", newline="", encoding="utf-8-sig") as fh:
     w = csv.writer(fh)
-    w.writerow(["날짜", "요일", "지시수", "claude-code", "codex", "에이전트작업",
-                "세션수", "커밋수", "추가줄", "삭제줄", "시작", "종료",
-                "작업대상(상위5)"])
-    w.writerows(index_rows)
+    w.writerow(INDEX_COLS)
+    for k in sorted(merged):
+        w.writerow(merged[k])
 
 # 날짜 폴더로 재현되지 않는 것만 (지시문 통합본은 중복이라 제외)
 ref = os.path.join(OUT, "_reference")
@@ -277,10 +308,13 @@ L += ["", "## 구조", "", "```",
       "  지시 없이 실행된 세션은 `_reference/sessions-all.csv` 에만 있습니다.",
       "- Codex 의 토큰 수치는 캐시분을 입력 토큰에 누적 포함해서, Claude Code 수치와",
       "  직접 비교하면 안 됩니다. 세션·지시·툴호출 수는 동일 기준입니다."]
-with open(os.path.join(OUT, "README.md"), "w", encoding="utf-8") as fh:
-    fh.write("\n".join(L) + "\n")
+# 증분 실행에서는 합계가 그날치만 반영되므로 README 를 덮지 않는다
+if not ONLY or not os.path.exists(os.path.join(OUT, "README.md")):
+    with open(os.path.join(OUT, "README.md"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(L) + "\n")
 
-print(f"날짜 폴더 {len(index_rows)}개 / 지시 {sum(r[2] for r in index_rows):,}건")
+scope_msg = f"대상 {', '.join(sorted(ONLY))}" if ONLY else f"날짜 폴더 {len(index_rows)}개"
+print(f"{scope_msg} / 지시 {sum(r[2] for r in index_rows):,}건")
 if undated:
     print(f"타임스탬프 없음: {len(undated)}건 → _no-date/")
 print(f"→ {OUT}")

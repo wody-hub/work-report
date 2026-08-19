@@ -24,6 +24,8 @@ import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
+from mask import mask_text          # 같은 디렉토리
+
 HOME = os.path.expanduser("~")
 CLAUDE_ROOT = os.path.join(HOME, ".claude", "projects")
 CODEX_SESS = os.path.join(HOME, ".codex", "sessions")
@@ -36,6 +38,18 @@ TZ = timezone(timedelta(hours=TZ_OFFSET))
 # 붙여넣은 소스코드·계획서 전문이 결과물에 실려 나가는 것을 막는 장치다.
 # 실적 판단에 필요한 '무엇을 지시했는가'는 앞부분에 담긴다.
 MAX_CHARS = int(os.environ.get("WORK_MAX_CHARS", "10000"))
+
+# 자격증명 마스킹. 기본 켜짐.
+MASK = os.environ.get("WORK_MASK", "1") not in ("0", "", "false", "no")
+MASK_HITS = Counter()
+
+
+def redact(text):
+    if not MASK:
+        return text
+    out, hits = mask_text(text)
+    MASK_HITS.update(hits)
+    return out
 
 # 사람이 아니라 다른 AI·도구가 만들어 넣은 프롬프트.
 # 로그상 user 턴으로 들어오지만 사람의 실적이 아니므로 집계에서 뺀다.
@@ -243,7 +257,7 @@ def scan_claude(label, target):
                             r["prompts"] += 1
                             if not r["title"]:
                                 r["title"] = re.sub(r"\s+", " ", t)[:120]
-                        body, orig = clip(t)
+                        body, orig = clip(redact(t))
                         prompts.append(dict(tool="claude-code", scope=label,
                                             session_id=sid, kind=r["kind"],
                                             cwd=o.get("cwd", ""), timestamp=ts,
@@ -357,7 +371,7 @@ def scan_codex():
                             r["prompts"] += 1
                             if not r["title"]:
                                 r["title"] = re.sub(r"\s+", " ", t)[:120]
-                    body, orig = clip(t)
+                    body, orig = clip(redact(t))
                     prompts.append(dict(tool="codex", scope=hit[0], session_id=sid,
                                         kind=r["kind"], cwd=cwd, timestamp=ts,
                                         branch="", source=src, bucket=bucket,
@@ -532,6 +546,9 @@ def main():
                         out.write(json.dumps(o, ensure_ascii=False) + "\n")
                         kept += 1
             print(f"  codex history: 대상 매칭 {kept}건")
+
+    if MASK_HITS:
+        print("  마스킹: " + ", ".join(f"{k} {v}" for k, v in MASK_HITS.most_common()))
 
     # ---- digest
     print("digest 생성 …")

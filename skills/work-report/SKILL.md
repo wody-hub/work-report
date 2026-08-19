@@ -10,10 +10,16 @@ description: Use when the user wants their AI coding session history (Claude Cod
 ## 실행
 
 ```bash
-scripts/run.sh                   # 수집 + 정리 + 보고
+scripts/run.sh --today           # 오늘만 갱신 — 일상 운영은 이것
+scripts/run.sh                   # 전체 기간 재생성 (처음 한 번)
+scripts/run.sh --open            # + 파일 탐색기로 결과 폴더 열기
+scripts/run.sh --date 2026-08-19 # 특정 날짜만 (콤마로 여러 날)
+scripts/run.sh --days 3          # 최근 3일만
 scripts/run.sh --open            # + 파일 탐색기로 결과 폴더 열기
 scripts/run.sh --mark-uploaded   # 올린 뒤 실행. 다음부터 변경분만 보고
 ```
+
+**일상 운영은 `--today` 를 쓴다.** 증분이라 다른 날짜 폴더를 건드리지 않고 `index.csv` 의 해당 행만 갈아끼운다. 전체 재생성은 규칙이 바뀌었을 때만 하면 된다.
 
 5단계: 세션 수집 → git 커밋 수집 → 날짜별 정리 → 변경분 비교 → 민감정보 점검.
 
@@ -62,6 +68,7 @@ by-date/
 - **Codex 토큰 수치는 Claude 와 비교 불가.** 캐시분이 입력 토큰에 누적 포함된다. 세션·지시·툴호출 수는 동일 기준.
 - **오늘 날짜 폴더는 매 실행마다 바뀐다.** 진행 중인 대화가 수집 대상 경로에 있으면 계속 쌓인다. 하루 끝에 한 번 돌리는 게 깔끔하다.
 - **`~/Documents`, `~/Desktop` 을 `WORK_DIR` 로 쓰지 마라.** macOS iCloud 동기화 대상이라 대용량 폴더를 넣으면 ` 2` 충돌 폴더가 생기고 데이터가 클라우드로 나간다.
+- **자격증명은 값이 마스킹돼서 나간다** (`[REDACTED:SECRET]`, 기본 켜짐). 다만 마스킹은 값만 지우고 키워드·문맥은 남기므로, 점검 단계가 `비밀번호`·IP 같은 잔여 신호를 계속 보고하는 건 정상이다.
 - **채팅에 붙여넣은 자격증명은 그날 `instructions.md` 에 그대로 들어간다.** 대화 자체가 수집 대상 경로에서 진행되면 토큰·비밀번호가 결과물에 실린다. 민감정보 점검이 `ya29.`, `1//`, `sk-`, `gh[pousr]_`, `AKIA`, `xox[abprs]-`, `refresh_token` 을 잡는다. 걸리면 파일을 지우는 게 아니라 **해당 자격증명을 폐기**해야 한다 — 원본 세션 로그에 영구히 남아 재생성 때마다 다시 나온다.
 
 ## 클라우드 예약 작업으로는 안 된다

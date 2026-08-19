@@ -2,7 +2,10 @@
 # AI 코딩 세션 로그 → 날짜별 업무 실적 데이터
 # 업로드는 하지 않는다. 결과 폴더에서 직접 올린다.
 #
-#   run.sh                   수집 + 정리 + 올릴 대상·민감정보 보고
+#   run.sh                   전체 기간 재생성 + 올릴 대상·민감정보 보고
+#   run.sh --today           오늘 날짜만 갱신 (일상 운영용)
+#   run.sh --date 2026-08-19 특정 날짜만 갱신 (콤마로 여러 날 가능)
+#   run.sh --days 3          최근 3일만 갱신
 #   run.sh --open            위 + 파일 탐색기로 결과 폴더 열기
 #   run.sh --mark-uploaded   현재 상태를 '업로드 완료'로 기록 (올린 뒤 실행)
 #   run.sh --with-raw        원본 JSONL 까지 복사 (수 GB. 외부 공유 금지)
@@ -28,6 +31,9 @@ fi
 export WORK_TARGETS
 export WORK_TZ_OFFSET="${WORK_TZ_OFFSET:-9}"
 export WORK_MAX_CHARS="${WORK_MAX_CHARS:-10000}"
+export WORK_MASK="${WORK_MASK:-1}"
+export WORK_MASK_IP="${WORK_MASK_IP:-0}"
+export WORK_MASK_FILE="${WORK_MASK_FILE:-$HOME/.config/work-report/secrets.txt}"
 export WORK_GIT_AUTHORS="${WORK_GIT_AUTHORS:-}"
 export WORK_GIT_SINCE="${WORK_GIT_SINCE:-}"
 export WORK_GIT_DEPTH="${WORK_GIT_DEPTH:-4}"
@@ -37,14 +43,30 @@ BYDATE_DIR="${BYDATE_DIR:-$WORK_DIR/by-date}"
 LOG_DIR="${LOG_DIR:-$WORK_DIR/logs}"
 STATE="${STATE:-$WORK_DIR/.last-upload.sha256}"
 
-DO_OPEN=0; MARK=0; RAW_FLAG=""
-for a in "$@"; do
-  case "$a" in
-    --open) DO_OPEN=1 ;;
-    --mark-uploaded) MARK=1 ;;
-    --with-raw) RAW_FLAG="--with-raw" ;;
-    --help|-h) sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
-    *) echo "알 수 없는 옵션: $a" >&2; exit 2 ;;
+DO_OPEN=0; MARK=0; RAW_FLAG=""; ONLY=""
+TZ_H="${WORK_TZ_OFFSET:-9}"
+# 설정한 시간대 기준의 날짜 (UTC 에 오프셋을 더해 계산)
+today() { date -u -v+"${TZ_H}"H '+%Y-%m-%d' 2>/dev/null \
+          || date -u -d "+${TZ_H} hours" '+%Y-%m-%d'; }
+daysago() { date -u -v+"${TZ_H}"H -v-"$1"d '+%Y-%m-%d' 2>/dev/null \
+            || date -u -d "+${TZ_H} hours -$1 days" '+%Y-%m-%d'; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --open) DO_OPEN=1; shift ;;
+    --mark-uploaded) MARK=1; shift ;;
+    --with-raw) RAW_FLAG="--with-raw"; shift ;;
+    --today) ONLY="$(today)"; shift ;;
+    --date) [ $# -ge 2 ] || { echo "--date 에 날짜가 필요합니다" >&2; exit 2; }
+            ONLY="$2"; shift 2 ;;
+    --date=*) ONLY="${1#*=}"; shift ;;
+    --days) [ $# -ge 2 ] || { echo "--days 에 숫자가 필요합니다" >&2; exit 2; }
+            n="$2"; ONLY=""
+            for i in $(seq 0 $((n-1))); do
+              ONLY="${ONLY:+$ONLY,}$(daysago "$i")"
+            done; shift 2 ;;
+    --help|-h) sed -n '2,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "알 수 없는 옵션: $1" >&2; exit 2 ;;
   esac
 done
 
@@ -86,8 +108,9 @@ python3 "$HERE/collect_sessions.py" "$EXPORT_DIR" $RAW_FLAG || die "수집 단�
 say "[2/5] git 커밋 수집"
 python3 "$HERE/collect_commits.py" "$EXPORT_DIR" || echo "  (커밋 수집 실패 — 지시문만 정리합니다)"
 
-say "[3/5] 날짜별 정리"
-python3 "$HERE/split_by_date.py" "$EXPORT_DIR" "$BYDATE_DIR" || die "날짜별 정리 실패"
+say "[3/5] 날짜별 정리${ONLY:+  (대상: $ONLY)}"
+python3 "$HERE/split_by_date.py" "$EXPORT_DIR" "$BYDATE_DIR" \
+  ${ONLY:+--only="$ONLY"} || die "날짜별 정리 실패"
 find "$BYDATE_DIR" -name '.DS_Store' -delete 2>/dev/null
 
 say "[4/5] 올릴 대상"
