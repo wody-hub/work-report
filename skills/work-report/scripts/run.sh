@@ -9,18 +9,33 @@
 #   run.sh --open            위 + 파일 탐색기로 결과 폴더 열기
 #   run.sh --mark-uploaded   현재 상태를 '업로드 완료'로 기록 (올린 뒤 실행)
 #   run.sh --with-raw        원본 JSONL 까지 복사 (수 GB. 외부 공유 금지)
+#   run.sh --init            세션 로그를 스캔해 설정 후보를 제시 (최초 1회)
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="${WORK_REPORT_CONFIG:-$HOME/.config/work-report/config.env}"
 
+# --init 은 설정이 없어도 동작해야 하므로 설정 검사보다 앞에서 처리한다
+for a in "$@"; do
+  if [ "$a" = "--init" ]; then
+    exec python3 "$HERE/init_config.py" "${@:2}"
+  fi
+done
+
 if [ ! -f "$CONFIG" ]; then
   cat >&2 <<EOF
 설정 파일이 없습니다: $CONFIG
 
-  저장소에서 setup 을 실행하면 템플릿이 복사됩니다:
-    ./setup --host claude
-  그다음 파일을 열어 WORK_TARGETS 와 WORK_DIR 를 채우세요.
+수집할 경로를 정해야 합니다. 세션 로그를 스캔해 후보를 뽑아 드립니다:
+
+  $(basename "${BASH_SOURCE[0]}") --init
+
+후보를 보고 경로를 고른 뒤 아래처럼 설정을 만듭니다:
+
+  $(basename "${BASH_SOURCE[0]}") --init --write "경로1:경로2" "결과폴더" "내이메일"
+
+이미 설정을 손으로 만들 준비가 됐다면 $CONFIG 에
+WORK_TARGETS 와 WORK_DIR 만 채워도 됩니다.
 EOF
   exit 1
 fi
