@@ -28,6 +28,9 @@ fi
 export WORK_TARGETS
 export WORK_TZ_OFFSET="${WORK_TZ_OFFSET:-9}"
 export WORK_MAX_CHARS="${WORK_MAX_CHARS:-10000}"
+export WORK_GIT_AUTHORS="${WORK_GIT_AUTHORS:-}"
+export WORK_GIT_SINCE="${WORK_GIT_SINCE:-}"
+export WORK_GIT_DEPTH="${WORK_GIT_DEPTH:-4}"
 
 EXPORT_DIR="${EXPORT_DIR:-$WORK_DIR/export}"
 BYDATE_DIR="${BYDATE_DIR:-$WORK_DIR/by-date}"
@@ -77,14 +80,17 @@ mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/$(date '+%Y-%m-%d_%H%M%S').log"
 exec > >(tee -a "$LOG") 2>&1
 
-say "[1/4] 세션 로그 수집"
+say "[1/5] 세션 로그 수집"
 python3 "$HERE/collect_sessions.py" "$EXPORT_DIR" $RAW_FLAG || die "수집 단계 실패"
 
-say "[2/4] 날짜별 정리"
+say "[2/5] git 커밋 수집"
+python3 "$HERE/collect_commits.py" "$EXPORT_DIR" || echo "  (커밋 수집 실패 — 지시문만 정리합니다)"
+
+say "[3/5] 날짜별 정리"
 python3 "$HERE/split_by_date.py" "$EXPORT_DIR" "$BYDATE_DIR" || die "날짜별 정리 실패"
 find "$BYDATE_DIR" -name '.DS_Store' -delete 2>/dev/null
 
-say "[3/4] 올릴 대상"
+say "[4/5] 올릴 대상"
 NEW_STATE="$(mktemp)"; CHANGED="$(mktemp)"
 trap 'rm -f "$NEW_STATE" "$CHANGED"' EXIT
 snapshot > "$NEW_STATE"
@@ -106,7 +112,7 @@ while IFS= read -r day; do
   printf '    %s  지시 %s건\n' "$day" "$n"
 done < "$CHANGED"
 
-say "[4/4] 민감정보 점검 (올릴 대상만)"
+say "[5/5] 민감정보 점검 (올릴 대상만)"
 PATTERNS='(ssh-rsa|BEGIN [A-Z ]*PRIVATE KEY|AuthKey_[A-Za-z0-9]+\.p8|ya29\.[A-Za-z0-9_-]{20,}|1//[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|refresh_token|password[[:space:]]*[:=]|passwd[[:space:]]*[:=]|secret[[:space:]]*[:=]|api[_-]?key[[:space:]]*[:=]|Bearer [A-Za-z0-9._-]{20,}|[0-9]{1,3}(\.[0-9]{1,3}){3})'
 HITS=0
 while IFS= read -r day; do

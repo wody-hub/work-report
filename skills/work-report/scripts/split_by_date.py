@@ -10,6 +10,7 @@
       instructions.md             그날 사람이 준 업무 지시 전문 (시간순)
       instructions.jsonl
       agent-tasks.md|.jsonl       AI 가 만든 지시 — agent-task, generated (있는 날만)
+      commits.csv                 그날 내 git 커밋 (있는 날만)
       sessions.csv                그날 지시가 있었던 세션 인덱스
   <OUT>/_reference/               날짜 폴더로 재현되지 않는 것만
       sessions-all.csv            전체 세션 (지시 없는 세션 포함)
@@ -73,6 +74,29 @@ if not os.path.isdir(dig):
 instructions = [json.loads(l) for l in
                 open(os.path.join(dig, "instructions-all.jsonl"), encoding="utf-8")]
 
+# 커밋은 있을 때만 (collect_commits.py 를 돌렸거나 git 저장소가 있는 경우)
+commits_by_date = defaultdict(list)
+_cf = os.path.join(dig, "commits.jsonl")
+if os.path.exists(_cf):
+    for l in open(_cf, encoding="utf-8"):
+        c = json.loads(l)
+        commits_by_date[c["date"]].append(c)
+
+COMMIT_COLS = ["시각", "저장소", "브랜치", "커밋", "타입", "영역", "제목",
+               "파일수", "추가", "삭제", "머지"]
+
+
+def write_commits(path, rows):
+    rows = sorted(rows, key=lambda c: c["timestamp"])
+    with open(path, "w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.writer(fh)
+        w.writerow(COMMIT_COLS)
+        for c in rows:
+            w.writerow([c["time"], c["repo"], c["branch"], c["hash"], c["type"],
+                        c["conv_scope"], c["subject"], c["files"],
+                        c["insertions"], c["deletions"],
+                        "Y" if c["is_merge"] else ""])
+
 with open(os.path.join(dig, "sessions-all.csv"), encoding="utf-8-sig") as fh:
     rd = csv.reader(fh)
     sess_header = next(rd)
@@ -119,15 +143,21 @@ def write_day_md(path, day, items, title, note=""):
 
 
 index_rows = []
-for day in sorted(by_date):
-    allitems = sorted(by_date[day], key=lambda x: x[0])
+# 지시가 있는 날 + 커밋이 있는 날의 합집합.
+# AI 없이 작업한 날도 실적이므로 커밋만 있는 날에도 폴더를 만든다.
+for day in sorted(set(by_date) | set(commits_by_date)):
+    allitems = sorted(by_date.get(day, []), key=lambda x: x[0])
+    daycommits = commits_by_date.get(day, [])
+    if not allitems and not daycommits:
+        continue
     # 사람이 직접 준 지시 vs AI 가 하위 에이전트에 넘긴 작업지시
     items = [x for x in allitems if x[1].get("bucket", "human") == "human"]
     agent = [x for x in allitems if x[1].get("bucket", "human") != "human"]
     ddir = os.path.join(OUT, day)
     os.makedirs(ddir, exist_ok=True)
+    wd = WEEKDAYS[datetime.strptime(day, "%Y-%m-%d").weekday()]
 
-    # 사람 지시가 0건인 날도 폴더는 만든다 (AI 만 돌린 날이라는 사실 자체가 기록).
+    # 사람 지시가 0건인 날도 폴더는 만든다 (AI 없이 커밋만 한 날도 실적이다).
     # 이때 non-human 을 instructions 로 옮기지 않는다 — 집계가 오염된다.
     with open(os.path.join(ddir, "instructions.jsonl"), "w", encoding="utf-8") as fh:
         for _dt, p in items:
@@ -135,11 +165,14 @@ for day in sorted(by_date):
     if items:
         write_day_md(os.path.join(ddir, "instructions.md"), day, items, "업무 지시")
     else:
-        wd = WEEKDAYS[allitems[0][0].weekday()]
+        note = ("이 날 AI 도구에 준 지시는 없습니다. "
+                + ("`commits.csv` 에 이 날 작업 결과가 있습니다."
+                   if daycommits else "`agent-tasks.md` 를 참고하세요."))
         with open(os.path.join(ddir, "instructions.md"), "w", encoding="utf-8") as fh:
-            fh.write(f"# {day} ({wd}) 업무 지시 0건\n\n"
-                     "> 이 날 사람이 직접 준 지시는 없습니다. "
-                     "`agent-tasks.md` 를 참고하세요.\n")
+            fh.write(f"# {day} ({wd}) 업무 지시 0건\n\n> {note}\n")
+
+    if daycommits:
+        write_commits(os.path.join(ddir, "commits.csv"), daycommits)
 
     if agent:
         with open(os.path.join(ddir, "agent-tasks.jsonl"), "w", encoding="utf-8") as fh:
@@ -164,10 +197,19 @@ for day in sorted(by_date):
 
     tools = Counter(p["tool"] for _d, p in items)
     cwds = Counter(short(p["cwd"]) for _d, p in items)
+    if not cwds:   # 커밋만 있는 날은 저장소를 작업 대상으로 표기
+        cwds = Counter(c["repo"] for c in daycommits)
+    start = f"{allitems[0][0]:%H:%M}" if allitems else min(
+        (c["time"] for c in daycommits), default="")
+    end = f"{allitems[-1][0]:%H:%M}" if allitems else max(
+        (c["time"] for c in daycommits), default="")
     index_rows.append([
-        day, WEEKDAYS[allitems[0][0].weekday()], len(items),
+        day, wd, len(items),
         tools.get("claude-code", 0), tools.get("codex", 0), len(agent), len(sids),
-        f"{allitems[0][0]:%H:%M}", f"{allitems[-1][0]:%H:%M}",
+        len(daycommits),
+        sum(c["insertions"] for c in daycommits),
+        sum(c["deletions"] for c in daycommits),
+        start, end,
         " / ".join(f"{k}({v})" for k, v in cwds.most_common(5)),
     ])
 
@@ -184,13 +226,14 @@ if not index_rows:
 with open(os.path.join(OUT, "index.csv"), "w", newline="", encoding="utf-8-sig") as fh:
     w = csv.writer(fh)
     w.writerow(["날짜", "요일", "지시수", "claude-code", "codex", "에이전트작업",
-                "세션수", "시작", "종료", "작업대상(상위5)"])
+                "세션수", "커밋수", "추가줄", "삭제줄", "시작", "종료",
+                "작업대상(상위5)"])
     w.writerows(index_rows)
 
 # 날짜 폴더로 재현되지 않는 것만 (지시문 통합본은 중복이라 제외)
 ref = os.path.join(OUT, "_reference")
 os.makedirs(ref, exist_ok=True)
-for f in ("sessions-all.csv", "daily-activity.csv"):
+for f in ("sessions-all.csv", "daily-activity.csv", "commits.jsonl"):
     src = os.path.join(dig, f)
     if os.path.exists(src):
         shutil.copy2(src, os.path.join(ref, f))
@@ -221,6 +264,7 @@ L += ["", "## 구조", "", "```",
       "  instructions.md            그날 사람이 준 업무 지시 전문, 시간순",
       "  instructions.jsonl         같은 내용 구조화 (tool/cwd/branch/timestamp/text)",
       "  agent-tasks.md|.jsonl      AI 가 만든 지시 — agent-task, generated (있는 날만)",
+      "  commits.csv                그날 내 git 커밋 — 시각·저장소·타입·제목·변경량",
       "  sessions.csv               그날 지시가 있었던 세션 인덱스",
       "_reference/",
       "  sessions-all.csv           전체 세션 인덱스 (지시 없는 세션 포함)",
