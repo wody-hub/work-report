@@ -243,7 +243,11 @@ $HOME/Notes/acme-vault      → 라벨 acme-vault,  표기 ~acme-vault
 | `run.sh --with-raw` | 원본 JSONL 까지 복사 (수 GB, **외부 공유 금지**) |
 | `run.sh --help` | 사용법 |
 
-`--today`·`--date`·`--days` 는 **증분**이다. 지정한 날짜 폴더만 다시 쓰고 나머지는 손대지 않으며, `index.csv` 는 해당 행만 갈아끼운다. 처음 한 번만 전체로 돌리고 이후에는 `--today` 로 운영하면 된다.
+`--today`·`--date`·`--days` 는 **증분**이다. 지정한 날짜만 다시 쓰고 나머지는 손대지 않으며, `index.csv` 는 해당 행만 갈아끼운다. 코드 diff 도 그 날짜만 생성한다.
+
+처음 한 번만 전체로 돌리고 이후에는 `--today` 로 운영하면 된다. 실측 기준 **전체 92초 / 당일 29초**.
+
+전체 재생성은 임시 디렉토리에 만든 뒤 통째로 교체한다. 중간에 실패해도 기존 산출물이 남는다.
 
 ---
 
@@ -317,6 +321,8 @@ $WORK_DIR/
 `timestamp` 는 `WORK_TZ_OFFSET` 을 적용한 ISO 8601(오프셋 포함)이다. `commits.jsonl` 도 같은 기준이라 지시와 커밋을 바로 짝지을 수 있다.
 
 `branch` 는 Claude Code 는 로그의 `gitBranch`, Codex 는 `session_meta.git.branch` 에서 온다. Codex 는 세션에 git 정보가 없는 경우가 있어 일부는 비어 있다.
+
+`ts_source` 는 시각의 출처다. `record` 는 레코드 자체의 타임스탬프, `session` 은 세션 시작 시각으로 채운 것이다 (구형 Codex 포맷은 레코드에 시각이 없다). 세션이 자정을 넘겼다면 `session` 인 레코드는 날짜가 하루 어긋날 수 있다.
 | `agent-tasks.md\|.jsonl` | AI 가 만든 지시 — `agent-task`, `generated` (있는 날만) |
 | `commits.csv` | 그날 내 git 커밋 (있는 날만) |
 | `sessions.csv` | 그날 지시가 있었던 세션 인덱스 |

@@ -32,6 +32,8 @@ from mask import mask_text
 MAX_FILE_LINES = int(os.environ.get("WORK_CODE_MAX_FILE_LINES", "500"))
 MAX_DAY_BYTES = int(os.environ.get("WORK_CODE_MAX_DAY_KB", "2048")) * 1024
 ENABLED = os.environ.get("WORK_CODE", "1") not in ("0", "", "false", "no")
+# 특정 날짜만 갱신 (당일 운영용). 나머지 날짜의 .patch 는 그대로 둔다.
+ONLY = {d.strip() for d in os.environ.get("WORK_ONLY_DATES", "").split(",") if d.strip()}
 
 DEFAULT_EXT = (
     "java,kt,swift,py,rb,go,rs,php,cs,scala,groovy,"
@@ -144,6 +146,8 @@ def main():
     missing = []          # patch 에 못 담긴 커밋과 사유
 
     for day in sorted(by_date):
+        if ONLY and day not in ONLY:
+            continue
         chunks, size, oversized = [], 0, []
         for c in sorted(by_date[day], key=lambda x: x["timestamp"]):
             if c.get("is_merge"):
@@ -222,8 +226,9 @@ def main():
 
     total = sum(os.path.getsize(os.path.join(outdir, f))
                 for f in os.listdir(outdir) if f.endswith(".patch"))
-    print(f"  {stat['날짜 파일']}일 / 커밋 {stat['커밋 포함']:,}개 / "
-          f"{total / 1024 / 1024:.1f} MB")
+    scope_msg = f"대상 {len(ONLY)}일" if ONLY else f"{stat['날짜 파일']}일"
+    print(f"  {scope_msg} / 커밋 {stat['커밋 포함']:,}개 / "
+          f"전체 patch {total / 1024 / 1024:.1f} MB")
     detail = [f"{k} {v:,}" for k, v in stat.most_common()
               if k not in ("날짜 파일", "커밋 포함")]
     if detail:
@@ -231,7 +236,8 @@ def main():
     if mask_hits:
         print("  마스킹: " + ", ".join(f"{k} {v}" for k, v in mask_hits.most_common()))
 
-    nonmerge = sum(1 for rows in by_date.values() for c in rows if not c.get("is_merge"))
+    scope = [(d, rows) for d, rows in by_date.items() if not ONLY or d in ONLY]
+    nonmerge = sum(1 for _d, rows in scope for c in rows if not c.get("is_merge"))
     covered = stat["커밋 포함"]
     pct = covered / nonmerge * 100 if nonmerge else 100
     reasons = Counter(r for _h, r in missing)
@@ -244,7 +250,9 @@ def main():
     cov = {"nonmerge_commits": nonmerge, "in_patch": covered,
            "coverage_pct": round(pct, 1), "missing_reasons": dict(reasons),
            "missing": [{"hash": h, "reason": r} for h, r in missing]}
-    with open(os.path.join(dig, "coverage-diffs.json"), "w", encoding="utf-8") as fh:
+    cov["scope"] = sorted(ONLY) if ONLY else "all"
+    name = "coverage-diffs.json" if not ONLY else "coverage-diffs-last-run.json"
+    with open(os.path.join(dig, name), "w", encoding="utf-8") as fh:
         json.dump(cov, fh, ensure_ascii=False, indent=1)
 
 

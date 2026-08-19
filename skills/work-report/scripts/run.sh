@@ -112,7 +112,9 @@ python3 "$HERE/collect_sessions.py" "$EXPORT_DIR" $RAW_FLAG || die "수집 단�
 say "[2/6] git 커밋 수집"
 python3 "$HERE/collect_commits.py" "$EXPORT_DIR" || echo "  (커밋 수집 실패 — 지시문만 정리합니다)"
 
-say "[3/6] 코드 변경 수집"
+export WORK_ONLY_DATES="$ONLY"
+
+say "[3/6] 코드 변경 수집${ONLY:+  (대상: $ONLY)}"
 python3 "$HERE/collect_diffs.py" "$EXPORT_DIR" || echo "  (코드 수집 실패 — 계속합니다)"
 
 say "[4/6] 날짜별 정리${ONLY:+  (대상: $ONLY)}"

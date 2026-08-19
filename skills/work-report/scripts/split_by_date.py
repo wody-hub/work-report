@@ -132,12 +132,16 @@ for p in instructions:
     (undated if dt is None else by_date[dt.strftime("%Y-%m-%d")]).append(
         p if dt is None else (dt, p))
 
+# 전체 재생성은 임시 디렉토리에 만든 뒤 통째로 교체한다.
+# 바로 rmtree 하면 중간에 실패했을 때 기존 산출물까지 사라진다.
 if ONLY:
     os.makedirs(OUT, exist_ok=True)      # 증분: 기존 날짜 폴더를 보존한다
+    WRITE_DIR = OUT
 else:
-    if os.path.exists(OUT):
-        shutil.rmtree(OUT)
-    os.makedirs(OUT)
+    WRITE_DIR = OUT + ".building"
+    if os.path.exists(WRITE_DIR):
+        shutil.rmtree(WRITE_DIR)
+    os.makedirs(WRITE_DIR)
 
 
 def write_day_md(path, day, items, title, note=""):
@@ -176,7 +180,7 @@ for day in sorted(set(by_date) | set(commits_by_date)):
     # 사람이 직접 준 지시 vs AI 가 하위 에이전트에 넘긴 작업지시
     items = [x for x in allitems if x[1].get("bucket", "human") == "human"]
     agent = [x for x in allitems if x[1].get("bucket", "human") != "human"]
-    ddir = os.path.join(OUT, day)
+    ddir = os.path.join(WRITE_DIR, day)
     os.makedirs(ddir, exist_ok=True)
     wd = WEEKDAYS[datetime.strptime(day, "%Y-%m-%d").weekday()]
 
@@ -242,7 +246,7 @@ for day in sorted(set(by_date) | set(commits_by_date)):
     ])
 
 if undated:
-    ddir = os.path.join(OUT, "_no-date")
+    ddir = os.path.join(WRITE_DIR, "_no-date")
     os.makedirs(ddir, exist_ok=True)
     with open(os.path.join(ddir, "instructions.jsonl"), "w", encoding="utf-8") as fh:
         for p in undated:
@@ -251,7 +255,7 @@ if undated:
 INDEX_COLS = ["날짜", "요일", "지시수", "claude-code", "codex", "에이전트작업",
               "세션수", "커밋수", "추가줄", "삭제줄", "시작", "종료",
               "작업대상(상위5)"]
-index_path = os.path.join(OUT, "index.csv")
+index_path = os.path.join(WRITE_DIR, "index.csv")
 
 if not index_rows:
     if ONLY:
@@ -276,7 +280,7 @@ with open(index_path, "w", newline="", encoding="utf-8-sig") as fh:
         w.writerow(merged[k])
 
 # 날짜 폴더로 재현되지 않는 것만 (지시문 통합본은 중복이라 제외)
-ref = os.path.join(OUT, "_reference")
+ref = os.path.join(WRITE_DIR, "_reference")
 os.makedirs(ref, exist_ok=True)
 for f in ("sessions-all.csv", "daily-activity.csv", "commits.jsonl",
           "coverage.json", "coverage-commits.json", "coverage-diffs.json"):
@@ -326,9 +330,19 @@ L += ["", "## 구조", "", "```",
       "- Codex 의 토큰 수치는 캐시분을 입력 토큰에 누적 포함해서, Claude Code 수치와",
       "  직접 비교하면 안 됩니다. 세션·지시·툴호출 수는 동일 기준입니다."]
 # 증분 실행에서는 합계가 그날치만 반영되므로 README 를 덮지 않는다
-if not ONLY or not os.path.exists(os.path.join(OUT, "README.md")):
-    with open(os.path.join(OUT, "README.md"), "w", encoding="utf-8") as fh:
+if not ONLY or not os.path.exists(os.path.join(WRITE_DIR, "README.md")):
+    with open(os.path.join(WRITE_DIR, "README.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(L) + "\n")
+
+# 전체 재생성이 끝났으면 이제 교체한다
+if WRITE_DIR != OUT:
+    old = OUT + ".old"
+    if os.path.exists(old):
+        shutil.rmtree(old)
+    if os.path.exists(OUT):
+        os.rename(OUT, old)
+    os.rename(WRITE_DIR, OUT)
+    shutil.rmtree(old, ignore_errors=True)
 
 scope_msg = f"대상 {', '.join(sorted(ONLY))}" if ONLY else f"날짜 폴더 {len(index_rows)}개"
 print(f"{scope_msg} / 지시 {sum(r[2] for r in index_rows):,}건")

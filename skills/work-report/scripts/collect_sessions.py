@@ -398,8 +398,14 @@ def scan_codex():
         if sess_branch:
             r["branches"].add(sess_branch)
         seen_text = set()
+        # 구형 포맷은 레코드에 타임스탬프가 없다. 세션 시작 시각으로 채운다.
+        # (세션이 자정을 넘기면 날짜가 어긋날 수 있어 ts_source 로 표시한다)
+        fallback_ts = meta.get("timestamp")
+        last_ts = fallback_ts
         for o in jlines(f):
             ts = o.get("timestamp")
+            if ts:
+                last_ts = ts
             if ts:
                 if not r["first"] or ts < r["first"]:
                     r["first"] = ts
@@ -433,9 +439,11 @@ def scan_codex():
                             if not r["title"]:
                                 r["title"] = re.sub(r"\s+", " ", t)[:120]
                     body, orig = clip(redact(t))
+                    rec_ts = ts or last_ts
                     prompts.append(dict(tool="codex", scope=hit[0], session_id=sid,
                                         kind=r["kind"], cwd=cwd,
-                                        timestamp=iso_local(ts),
+                                        timestamp=iso_local(rec_ts),
+                                        ts_source="record" if ts else "session",
                                         branch=sess_branch or "",
                                         source=src, bucket=bucket,
                                         text=body,
