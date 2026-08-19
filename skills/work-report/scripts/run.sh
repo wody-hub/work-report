@@ -113,7 +113,7 @@ while IFS= read -r day; do
 done < "$CHANGED"
 
 say "[5/5] 민감정보 점검 (올릴 대상만)"
-PATTERNS='(ssh-rsa|BEGIN [A-Z ]*PRIVATE KEY|AuthKey_[A-Za-z0-9]+\.p8|ya29\.[A-Za-z0-9_-]{20,}|1//[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|refresh_token|password[[:space:]]*[:=]|passwd[[:space:]]*[:=]|secret[[:space:]]*[:=]|api[_-]?key[[:space:]]*[:=]|Bearer [A-Za-z0-9._-]{20,}|[0-9]{1,3}(\.[0-9]{1,3}){3})'
+PATTERNS='(ssh-rsa|BEGIN [A-Z ]*PRIVATE KEY|AuthKey_[A-Za-z0-9]+\.p8|ya29\.[A-Za-z0-9_-]{20,}|1//[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|refresh_token|password[[:space:]]*[:=]|passwd[[:space:]]*[:=]|secret[[:space:]]*[:=]|api[_-]?key[[:space:]]*[:=]|Bearer [A-Za-z0-9._-]{20,}|비밀번호|패스워드|비번|암호는|접속정보|계정정보|sshpass|sudo su|ssh [a-z_][a-z0-9_-]*@|[0-9]{1,3}(\.[0-9]{1,3}){3})'
 HITS=0
 while IFS= read -r day; do
   c=$(grep -aEoh "$PATTERNS" "$BYDATE_DIR/$day/instructions.md" 2>/dev/null \

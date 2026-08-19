@@ -403,7 +403,9 @@ git -C <저장소> log --all --pretty='%ae' | sort | uniq -c | sort -rn
 
 올릴 날짜의 지시문에서 아래 패턴을 찾아 보여준다.
 
-`ssh-rsa` · `BEGIN … PRIVATE KEY` · `AuthKey_*.p8` · `ya29.…`(Google OAuth) · `1//…`(refresh token) · `sk-…` · `gh[pousr]_…` · `AKIA…`(AWS) · `xox[abprs]-…`(Slack) · `refresh_token` · `password=` · `secret=` · `api_key=` · `Bearer …` · IP 주소
+`ssh-rsa` · `BEGIN … PRIVATE KEY` · `AuthKey_*.p8` · `ya29.…`(Google OAuth) · `1//…`(refresh token) · `sk-…` · `gh[pousr]_…` · `AKIA…`(AWS) · `xox[abprs]-…`(Slack) · `refresh_token` · `password=` · `secret=` · `api_key=` · `Bearer …` · `sshpass` · `sudo su` · `ssh user@…` · IP 주소
+
+한글 문맥도 잡는다 — `비밀번호` · `패스워드` · `비번` · `암호는` · `접속정보` · `계정정보`. 영어 패턴만 쓰면 "sudo 비밀번호는 xxx 야" 같은 지시를 통째로 놓친다.
 
 IP 는 버전번호·좌표와도 겹쳐 오탐이 섞인다. 토큰·키 패턴은 오탐이 드물다.
 

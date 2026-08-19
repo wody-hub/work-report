@@ -158,6 +158,13 @@ def new_session(**kw):
 NOISE_PREFIX = ("<command-name>", "<command-message>", "<local-command-stdout>",
                 "Caveat: The messages below", "[Request interrupted")
 
+# 사람이 아니라 하네스가 user 턴에 끼워 넣는 것들.
+# <image …> 는 제외 — 사람이 이미지를 붙여넣은 지시라서 본문이 사람 것이다.
+SYSTEM_TAG_RE = re.compile(
+    r"\s*<(?:task-notification|revision_context|planning_context"
+    r"|pattern_mapping_context|user_action|user_shell_command"
+    r"|bash-input|bash-stdout|bash-stderr|system-reminder)[\s>]")
+
 
 def text_of(content):
     if isinstance(content, str):
@@ -229,6 +236,7 @@ def scan_claude(label, target):
                         isinstance(b, dict) and b.get("type") == "tool_result" for b in c)
                     t = text_of(c).strip()
                     if (not has_tr and t and not t.startswith(NOISE_PREFIX)
+                            and not SYSTEM_TAG_RE.match(t)
                             and not (t.startswith("<") and "<system-reminder>" in t[:200])):
                         bucket = classify(t, is_sub)
                         if bucket == "human":
@@ -339,7 +347,7 @@ def scan_codex():
                 if t and not t.startswith(CODEX_PLUMBING) and key not in seen_text:
                     seen_text.add(key)
                     lead = t.lstrip()
-                    if lead.startswith(CODEX_INJECTED):
+                    if lead.startswith(CODEX_INJECTED) or SYSTEM_TAG_RE.match(t):
                         bucket = "injected"
                     elif lead.startswith(CODEX_AGENT_TASK):
                         bucket = "agent-task"
