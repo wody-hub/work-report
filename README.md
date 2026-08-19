@@ -204,36 +204,50 @@ host 를 명시하려면:
 
 ## 설정
 
-`~/.config/work-report/config.env` 를 열어 두 값을 채운다.
+### `--init` 이 후보를 뽑아준다
+
+수집할 경로를 맨손으로 적기는 어렵다. 세션 로그에 어디에서 작업했는지 이미 들어 있으므로 그것을 세어 제시한다.
 
 ```bash
-# 수집 대상 경로. 콜론(:) 구분. 마지막 폴더명이 리포트의 범위 라벨이 된다.
-WORK_TARGETS="$HOME/Project/acme:$HOME/Notes/acme-vault"
+~/.claude/skills/work-report/scripts/run.sh --init
+```
 
-# 결과를 둘 폴더
+```
+세션 로그에서 작업 경로 115종 / 세션 1427개를 찾았습니다.
+
+수집 대상 후보 (세션 수 순):
+      세션    하위경로  경로
+    1248      73  ~/Project            ← 개인 작업까지 섞인다
+     904      58  ~/Project/회사        ← 이걸 고른다
+     344      15  ~/Project/개인
+
+git 커밋 author 후보:
+   11725  me@company.com
+    7400  teammate@company.com        ← 고르면 남의 커밋이 섞인다
+
+결과 폴더 제안: ~/work-report-out
+```
+
+고른 값으로 설정을 만든다. 기존 설정이 있으면 덮어쓴다.
+
+```bash
+run.sh --init --write "$HOME/Project/회사" "$HOME/work-report-out" "me@company.com"
+```
+
+세션에서 `/work-report` 를 쓰면 설정이 없을 때 에이전트가 이 과정을 안내한다.
+
+### 직접 편집
+
+`~/.config/work-report/config.env` 를 열어 값을 바꿔도 된다. 필수는 두 개다.
+
+```bash
+WORK_TARGETS="$HOME/Project/acme:$HOME/Notes/acme-vault"   # 콜론 구분
 WORK_DIR="$HOME/work-report-out"
-
-# 시간대 오프셋 (시간 단위). 9 = KST, 0 = UTC, -8 = PST
-WORK_TZ_OFFSET="9"
 ```
 
-설정 파일은 **저장소 밖에** 있다. `git pull` 로 덮이지 않고, 개인 경로가 커밋될 경로 자체가 없다.
+설정 파일은 **저장소 밖에** 있다. `git pull` 로 덮이지 않고, 개인 경로가 커밋될 경로 자체가 없다. 일회성 변경은 환경변수로 덮어쓴다 (`WORK_MASK_IP=1 run.sh --today`), 설정 파일 자체를 바꾸려면 `WORK_REPORT_CONFIG` 를 쓴다.
 
-### WORK_TARGETS 정하기
-
-수집 대상 경로 하위에서 실행된 세션만 모인다. 지금 어떤 경로에 세션이 있는지 확인하려면:
-
-```bash
-# Claude Code
-grep -ho '"cwd":"[^"]*"' ~/.claude/projects/*/*.jsonl 2>/dev/null \
-  | sort -u | head -40
-
-# Codex
-grep -ho '"cwd":"[^"]*"' ~/.codex/sessions/*/*/*/*.jsonl 2>/dev/null \
-  | sort -u | head -40
-```
-
-여기서 실적에 넣을 상위 경로들을 골라 콜론으로 이어 붙인다. 경로는 여러 개 지정할 수 있고, 중첩된 경로도 안전하다 (가장 긴 경로가 이긴다).
+경로는 여러 개 지정할 수 있고, 중첩된 경로도 안전하다 (가장 긴 경로가 이긴다).
 
 마지막 폴더명이 라벨이 된다:
 
@@ -257,35 +271,43 @@ $HOME/Notes/acme-vault      → 라벨 acme-vault,  표기 ~acme-vault
 또는 세션에서 `/work-report`, 혹은 "업무정리 해줘".
 
 ```
-[1/4] 세션 로그 수집
+[1/6] 세션 로그 수집
 스캔: Claude Code / acme …
-  세션 346 / 지시 1524
+  세션 349 / 지시 1401
 스캔: Codex …
-  세션 532 / 사람 지시 4759 / 도구주입·에이전트작업 330
+  세션 567 / 사람 지시 5129 / 도구주입·에이전트작업 369
 
-[2/4] 날짜별 정리
-날짜 폴더 142개 / 지시 6,102건
+[2/6] git 커밋 수집
+  author: me@company.com
+  저장소 22개 / 커밋 4,141개 / 377일
+  포크·클론 중복 제거 1,943건
 
-[3/4] 올릴 대상
+[3/6] 코드 변경 수집
+  361일 / 커밋 3,086개 / 전체 patch 49.7 MB
+  커버리지: 머지 아닌 커밋 3,456개 중 3,086개 포함 (89%)
+  미포함 사유: 변경 파일이 전부 제외 규칙 365, 하루 용량 상한 초과 3, 변경 파일 없음 2
+
+[4/6] 날짜별 정리
+날짜 폴더 386개 / 지시 6,291건
+
+[5/6] 올릴 대상
   (업로드 기록 없음 → 전체가 대상)
-  전체 날짜 142개 / 올릴 대상 142개
-    2025-11-03  지시 22건
-    …
+  전체 날짜 386개 / 올릴 대상 386개
 
-[4/4] 민감정보 점검 (올릴 대상만)
+[6/6] 민감정보 점검 (올릴 대상만)
     2026-08-11
       AuthKey_XXXXXXXXXX.p8
-  1개 날짜에서 일치. 외부 공유 가능한지 확인하세요.
+  42개 날짜에서 일치. 외부 공유 가능한지 확인하세요.
 
 결과
   폴더:  /Users/me/work-report-out/by-date
-  로그:  /Users/me/work-report-out/logs/2026-08-18_183722.log
+  로그:  /Users/me/work-report-out/logs/2026-08-19_120141.log
 
-  위 142개 날짜 폴더를 올리세요.
+  위 386개 날짜 폴더를 올리세요.
   올린 뒤:  run.sh --mark-uploaded
 ```
 
-보통 10초 안에 끝난다. 수집은 원본을 읽기만 하고 복사하지 않는다.
+전체 재생성은 1~2분 걸린다 (실측 92초 / 386일). 이후 `--today` 는 29초다. 수집은 원본을 읽기만 하고 복사하지 않는다.
 
 ### 명령 정리
 
@@ -718,7 +740,7 @@ rm -rf ~/.config/work-report                                  # 설정
 `./setup` 을 실행하지 않았거나 경로가 다르다. `~/.config/work-report/config.env` 존재를 확인한다. 다른 위치를 쓰려면 `WORK_REPORT_CONFIG=/path/to/config.env run.sh`.
 
 **`대상 경로에서 실행된 세션을 찾지 못했습니다`**
-`WORK_TARGETS` 경로가 실제 세션의 cwd 와 다르다. [WORK_TARGETS 정하기](#work_targets-정하기) 의 `grep` 으로 실제 cwd 목록을 확인한다. 경로 끝 `/` 는 있어도 없어도 된다.
+`WORK_TARGETS` 경로가 실제 세션의 cwd 와 다르다. `run.sh --init` 으로 실제 작업 경로 후보를 확인한다 → [설정](#설정). 경로 끝 `/` 는 있어도 없어도 된다.
 
 **지시 건수가 예상보다 많다**
 `agent-tasks.*` 를 섞어 보고 있을 수 있다. `index.csv` 의 `지시수` 열이 사람 지시이고 `에이전트작업` 은 별도다.
