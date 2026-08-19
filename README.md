@@ -9,6 +9,7 @@ Claude Code 와 Codex 는 모든 세션을 로컬에 JSONL 로 남긴다. 그 �
 ├── instructions.md      # 07:57 · claude-code · ~acme/backend · feature/login
 ├── instructions.jsonl   #   "모바일 알림함 목록에 TBM 항목 노출해야해"
 ├── commits.csv          # 08:22 feat(notification): 모바일 알림함에 TBM 항목 노출
+├── code.patch           # 그 커밋의 실제 diff (unified diff)
 ├── agent-tasks.md       # AI 가 하위 에이전트에 넘긴 지시 (집계 제외)
 └── sessions.csv         # 그날 세션 34개: 시각·경로·브랜치·토큰·툴호출
 ```
@@ -28,13 +29,14 @@ Claude Code 와 Codex 는 모든 세션을 로컬에 JSONL 로 남긴다. 그 �
 7. [일상 워크플로](#일상-워크플로)
 8. [출력물 읽는 법](#출력물-읽는-법)
 9. [git 커밋 수집](#git-커밋-수집)
-10. [집계 기준](#집계-기준)
-11. [민감정보 점검](#민감정보-점검)
-12. [업로드](#업로드)
-13. [자동화](#자동화)
-14. [업데이트와 제거](#업데이트와-제거)
-15. [트러블슈팅](#트러블슈팅)
-16. [FAQ](#faq)
+10. [코드 변경 수집](#코드-변경-수집)
+11. [집계 기준](#집계-기준)
+12. [민감정보 점검](#민감정보-점검)
+13. [업로드](#업로드)
+14. [자동화](#자동화)
+15. [업데이트와 제거](#업데이트와-제거)
+16. [트러블슈팅](#트러블슈팅)
+17. [FAQ](#faq)
 
 ---
 
@@ -370,6 +372,61 @@ git -C <저장소> log --all --pretty='%ae' | sort | uniq -c | sort -rn
 커밋은 AI 도구를 쓰기 전부터 있으므로, 날짜 폴더가 지시 기준보다 훨씬 넓어진다. **AI 없이 커밋만 한 날도 실적이므로 폴더를 만든다.** 그 날 `instructions.md` 는 "업무 지시 0건" 으로 남는다.
 
 기간을 AI 사용 시점 이후로 맞추려면 `WORK_GIT_SINCE` 를 쓴다.
+
+---
+
+## 코드 변경 수집
+
+커밋 목록이 "무엇을 했다"라면 `code.patch` 는 **"실제로 이렇게 바꿨다"** 는 증거다. 내 커밋의 diff 를 날짜별로 하나의 unified diff 파일에 모은다.
+
+```
+==============================================================================
+commit 360cb1f57f  2026-08-13 08:22
+repo   ~acme/backend   branch feature/notification
+subject feat(notification): 모바일 알림함에 TBM 항목 노출
+==============================================================================
+diff --git a/src/main/java/.../NotificationServiceImpl.java b/...
+@@ -10,6 +10,7 @@
++import ...TbmManagementMapper;
+```
+
+용량과 시크릿 위험이 지시문보다 훨씬 크므로 **세 겹으로** 막는다.
+
+### 1. 파일 제외
+
+| 분류 | 대상 |
+|---|---|
+| 자격증명 | `.env*` · `*secret*` · `*credential*` · `*.p8` `*.pem` `*.key` `*.jks` `*.p12` · `id_rsa` · `google-services.json` · `GoogleService-Info.plist` |
+| 생성물 | `node_modules/` `dist/` `build/` `target/` `coverage/` · lock 파일 · `*.min.js` `*.map` `*.snap` |
+| 데이터·덤프 | 용어사전 CSV · `*-ddl-YYYYMMDD.sql` · `postgres-ddl/schema/sequences` 류 전체 스키마 덤프 |
+| 바이너리 | `GIT binary patch` 블록 (uuencode 덩어리) |
+
+확장자 allowlist 도 함께 적용한다 (`WORK_CODE_EXT`). 기본값은 소스코드·설정·문서 확장자다.
+
+### 2. 분량 상한
+
+| 설정 | 기본 | 뜻 |
+|---|---|---|
+| `WORK_CODE_MAX_FILE_LINES` | 500 | 파일 하나의 diff 줄 수. 넘으면 잘리고 생략 표시가 붙는다 |
+| `WORK_CODE_MAX_DAY_KB` | 2048 | 하루 patch 최대 크기. 넘으면 이후 커밋 생략 |
+| `WORK_CODE=0` | — | 코드 수집 자체를 끈다 |
+
+머지 커밋은 건너뛴다 (내용이 다른 커밋과 중복된다).
+
+### 3. 마스킹 — 코드에는 다르게 적용한다
+
+**코드 diff 에는 자유형 비밀번호 휴리스틱을 쓰지 않는다** (`freeform=False`). 비밀번호 검증 정규식이 통째로 걸려 원본이 훼손되기 때문이다.
+
+```java
+// 휴리스틱을 켜면 이 코드가 망가진다
+final String PASSWORD_RULE = "^(?=.*[a-zA-Z])(?=.*[0-9])(?=.*[!@#$%])[a-zA-Z0-9!@#$%]{8,15}$";
+```
+
+구조화된 토큰과 `password=값` 형태는 계속 잡는다. 실측에서 이 구분을 넣기 전에는 오탐 6,828건이 났고, 넣은 뒤에는 `KV_SECRET` 450건 · `BEARER` 1건만 남았다 (모두 실제 설정값).
+
+### 규모 참고
+
+실제 프로젝트 22개 저장소 · 커밋 4,661개 기준으로 **72MB / 360일**, 하루 평균 200KB, 최대 2MB. 수집에 약 1분 40초 걸린다.
 
 ---
 

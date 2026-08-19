@@ -181,4 +181,5 @@ def main():
               f"-{sum(r['deletions'] for r in all_rows):,}")
 
 
-main()
+if __name__ == "__main__":
+    main()

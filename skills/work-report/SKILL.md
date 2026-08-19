@@ -32,10 +32,11 @@ scripts/run.sh --mark-uploaded   # 올린 뒤 실행. 다음부터 변경분만 
 | 단계 | 내용 |
 |---|---|
 | 1 | `collect_sessions.py` — `~/.claude/projects` + `~/.codex/sessions` 스캔, 대상 경로에서 실행된 세션만 추출 |
-| 2 | `collect_commits.py` — 대상 경로의 git 저장소에서 내 커밋 수집 (지시의 결과물) |
-| 3 | `split_by_date.py` — `YYYY-MM-DD/` 폴더로 분류 (계층 없음) |
-| 4 | 지난 업로드 기록과 비교 → 신규·변경 날짜 목록 |
-| 5 | 민감정보 패턴 점검 (올릴 날짜만) |
+| 2 | `collect_commits.py` — git 저장소에서 내 커밋 수집 (무엇을 했는가) |
+| 3 | `collect_diffs.py` — 그 커밋의 실제 diff 수집 (어떻게 바꿨는가) |
+| 4 | `split_by_date.py` — `YYYY-MM-DD/` 폴더로 분류 (계층 없음) |
+| 5 | 지난 업로드 기록과 비교 → 신규·변경 날짜 목록 |
+| 6 | 민감정보 패턴 점검 (올릴 날짜만) |
 
 ## 보고할 내용
 
@@ -53,7 +54,8 @@ by-date/
   YYYY-MM-DD/
     instructions.md        그날 사람이 준 지시 전문, 시간순
     instructions.jsonl
-    commits.csv            그날 내 git 커밋 — 지시의 결과물
+    commits.csv            그날 내 git 커밋 — 무엇을 했는가
+    code.patch             그날 실제 코드 변경 — 어떻게 바꿨는가
     agent-tasks.md|.jsonl  AI 가 만든 지시 (집계 제외분)
     sessions.csv
   _reference/              지시 없는 세션 포함 전체 인덱스, 일별 툴호출
@@ -61,6 +63,8 @@ by-date/
 
 ## 알아둘 것
 
+- **코드 diff 에는 자유형 비밀번호 마스킹을 쓰지 않는다** (`mask_text(..., freeform=False)`). 비밀번호 검증 정규식 같은 코드가 걸려 원본이 훼손된다. 구조화된 토큰과 `password=값` 은 계속 잡는다.
+- **`code.patch` 는 `.env`·키 파일·lock·스키마 덤프·바이너리를 제외하고 만든다.** 상한은 파일당 500줄, 하루 2MB.
 - **지시(원인)와 커밋(결과)을 시각으로 짝지어 읽어라.** 실적 근거는 "무엇을 지시했다"보다 "지시 → 커밋" 연결이 강하다.
 - **집계 대상은 `bucket == human` 뿐이다.** `generated`(다른 AI 가 만든 프롬프트)와 `agent-task` 는 `agent-tasks.*` 로 분리된다. 실적 숫자를 말할 때 섞지 마라.
 - **Codex 지시문 출처가 두 곳이다.** 구형은 `event_msg/user_message`, 신형은 `response_item/message:user`. 둘 다 읽고 중복 제거한다. 한쪽만 보면 특정 시기 데이터가 통째로 빠진다.

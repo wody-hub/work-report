@@ -120,8 +120,14 @@ def _tag(kind):
     return f"[REDACTED:{kind}]"
 
 
-def mask_text(text):
-    """(마스킹된 텍스트, {유형: 건수}) 반환."""
+def mask_text(text, freeform=True):
+    """(마스킹된 텍스트, {유형: 건수}) 반환.
+
+    freeform=False 면 자유형 비밀번호 휴리스틱을 끈다. 코드 diff 에 쓸 때는
+    반드시 꺼야 한다 — 비밀번호 검증 정규식
+    ("^(?=.*[a-zA-Z])(?=.*[0-9])(?=.*[!@#$%])…") 처럼 문자+숫자+'!' 를 모두
+    가진 코드가 걸려 원본이 훼손된다. 구조화된 토큰과 key=value 는 계속 잡는다.
+    """
     if not text:
         return text, {}
     hits = {}
@@ -149,20 +155,21 @@ def mask_text(text):
             text, n = rx.subn(sub, text)
 
     # 자유형 비밀번호. 키워드가 있으면 느슨하게, 없으면 엄격하게 본다.
-    kw = [m.start() for m in CRED_KEYWORD.finditer(text)]
+    if freeform:
+        kw = [m.start() for m in CRED_KEYWORD.finditer(text)]
 
-    def sub_pw(m):
-        v = m.group("v")
-        if "REDACTED" in v:
-            return m.group(0)
-        # 키워드에서 60자 이내면 판정을 느슨하게 한다
-        near = any(abs(m.start() - k) <= 60 for k in kw)
-        if not looks_like_password(v, near):
-            return m.group(0)
-        bump("PASSWORD")
-        return _tag("SECRET")
+        def sub_pw(m):
+            v = m.group("v")
+            if "REDACTED" in v:
+                return m.group(0)
+            # 키워드에서 60자 이내면 판정을 느슨하게 한다
+            near = any(abs(m.start() - k) <= 60 for k in kw)
+            if not looks_like_password(v, near):
+                return m.group(0)
+            bump("PASSWORD")
+            return _tag("SECRET")
 
-    text = PW_CANDIDATE.sub(sub_pw, text)
+        text = PW_CANDIDATE.sub(sub_pw, text)
 
     if MASK_IP:
         def sub(m):

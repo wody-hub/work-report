@@ -11,6 +11,7 @@
       instructions.jsonl
       agent-tasks.md|.jsonl       AI 가 만든 지시 — agent-task, generated (있는 날만)
       commits.csv                 그날 내 git 커밋 (있는 날만)
+      code.patch                  그날 실제 코드 변경 (있는 날만)
       sessions.csv                그날 지시가 있었던 세션 인덱스
   <OUT>/_reference/               날짜 폴더로 재현되지 않는 것만
       sessions-all.csv            전체 세션 (지시 없는 세션 포함)
@@ -93,6 +94,8 @@ if os.path.exists(_cf):
 
 COMMIT_COLS = ["시각", "저장소", "브랜치", "커밋", "타입", "영역", "제목",
                "파일수", "추가", "삭제", "머지"]
+
+DIFF_DIR = os.path.join(dig, "diffs")
 
 
 def write_commits(path, rows):
@@ -187,6 +190,11 @@ for day in sorted(set(by_date) | set(commits_by_date)):
 
     if daycommits:
         write_commits(os.path.join(ddir, "commits.csv"), daycommits)
+
+    # 실제 코드 변경 (collect_diffs.py 를 돌렸으면 있다)
+    patch = os.path.join(DIFF_DIR, f"{day}.patch")
+    if os.path.exists(patch):
+        shutil.copy2(patch, os.path.join(ddir, "code.patch"))
 
     if agent:
         with open(os.path.join(ddir, "agent-tasks.jsonl"), "w", encoding="utf-8") as fh:
@@ -296,6 +304,7 @@ L += ["", "## 구조", "", "```",
       "  instructions.jsonl         같은 내용 구조화 (tool/cwd/branch/timestamp/text)",
       "  agent-tasks.md|.jsonl      AI 가 만든 지시 — agent-task, generated (있는 날만)",
       "  commits.csv                그날 내 git 커밋 — 시각·저장소·타입·제목·변경량",
+      "  code.patch                 그날 실제 코드 변경 (unified diff)",
       "  sessions.csv               그날 지시가 있었던 세션 인덱스",
       "_reference/",
       "  sessions-all.csv           전체 세션 인덱스 (지시 없는 세션 포함)",
