@@ -32,6 +32,37 @@ CODEX_HIST = os.path.join(HOME, ".codex", "history.jsonl")
 TZ_OFFSET = float(os.environ.get("WORK_TZ_OFFSET", "9"))
 TZ = timezone(timedelta(hours=TZ_OFFSET))
 
+# 지시문 길이 상한. 초과분은 잘라낸다 (0 = 무제한).
+# 붙여넣은 소스코드·계획서 전문이 결과물에 실려 나가는 것을 막는 장치다.
+# 실적 판단에 필요한 '무엇을 지시했는가'는 앞부분에 담긴다.
+MAX_CHARS = int(os.environ.get("WORK_MAX_CHARS", "10000"))
+
+# 사람이 아니라 다른 AI·도구가 만들어 넣은 프롬프트.
+# 로그상 user 턴으로 들어오지만 사람의 실적이 아니므로 집계에서 뺀다.
+GENERATED_RE = re.compile(
+    r"^\s*(?:"
+    r"#{1,3}\s*Cross-AI\b"                       # 교차 검토 요청 템플릿
+    r"|You are (?:an?|reviewing)\b"              # "You are an external reviewer" 류
+    r"|<objective>"                              # 리서치 에이전트 지시
+    r"|##\s*Task\s*$"
+    r")", re.IGNORECASE)
+
+
+def classify(text, is_subagent=False):
+    """지시문 분류: human / agent-task / generated."""
+    if is_subagent:
+        return "agent-task"
+    if GENERATED_RE.match(text):
+        return "generated"
+    return "human"
+
+
+def clip(text):
+    """길이 상한 적용. (본문, 원본길이 또는 None) 반환."""
+    if MAX_CHARS and len(text) > MAX_CHARS:
+        return text[:MAX_CHARS], len(text)
+    return text, None
+
 
 # ---------------------------------------------------------------- 설정
 def load_targets():
@@ -199,15 +230,18 @@ def scan_claude(label, target):
                     t = text_of(c).strip()
                     if (not has_tr and t and not t.startswith(NOISE_PREFIX)
                             and not (t.startswith("<") and "<system-reminder>" in t[:200])):
-                        r["prompts"] += 1
-                        if not r["title"]:
-                            r["title"] = re.sub(r"\s+", " ", t)[:120]
+                        bucket = classify(t, is_sub)
+                        if bucket == "human":
+                            r["prompts"] += 1
+                            if not r["title"]:
+                                r["title"] = re.sub(r"\s+", " ", t)[:120]
+                        body, orig = clip(t)
                         prompts.append(dict(tool="claude-code", scope=label,
                                             session_id=sid, kind=r["kind"],
                                             cwd=o.get("cwd", ""), timestamp=ts,
                                             branch=o.get("gitBranch") or "",
-                                            bucket="human" if not is_sub else "agent-task",
-                                            text=t))
+                                            bucket=bucket, text=body,
+                                            **({"orig_chars": orig} if orig else {})))
                 elif o.get("type") == "assistant":
                     r["replies"] += 1
                     if msg.get("model"):
@@ -310,13 +344,17 @@ def scan_codex():
                     elif lead.startswith(CODEX_AGENT_TASK):
                         bucket = "agent-task"
                     else:
-                        bucket = "human"
-                        r["prompts"] += 1
-                        if not r["title"]:
-                            r["title"] = re.sub(r"\s+", " ", t)[:120]
+                        bucket = classify(t)
+                        if bucket == "human":
+                            r["prompts"] += 1
+                            if not r["title"]:
+                                r["title"] = re.sub(r"\s+", " ", t)[:120]
+                    body, orig = clip(t)
                     prompts.append(dict(tool="codex", scope=hit[0], session_id=sid,
                                         kind=r["kind"], cwd=cwd, timestamp=ts,
-                                        branch="", source=src, bucket=bucket, text=t))
+                                        branch="", source=src, bucket=bucket,
+                                        text=body,
+                                        **({"orig_chars": orig} if orig else {})))
                 continue
             if pt == "agent_message":
                 r["replies"] += 1
@@ -377,7 +415,13 @@ def write_prompts(base, prompts, title):
                 head += f" · `{p['branch']}`"
             if p.get("kind") not in ("main",):
                 head += f" · ({p['kind']})"
-            fh.write(f"### {head}\n\n```\n{p['text'].strip()}\n```\n\n")
+            if p.get("bucket") not in (None, "human"):
+                head += f" · [{p['bucket']}]"
+            body = p["text"].strip()
+            if p.get("orig_chars"):
+                body += (f"\n\n… (총 {p['orig_chars']:,}자 중 앞 {MAX_CHARS:,}자. "
+                         "나머지 생략)")
+            fh.write(f"### {head}\n\n```\n{body}\n```\n\n")
 
 
 def stat_block(name, rows, prompts, tools, models):
@@ -448,7 +492,11 @@ def main():
     print(f"  세션 {len(x_rows)} / 사람 지시 {len(x_pr)} / 도구주입·에이전트작업 {len(x_other)}")
 
     all_rows = [r for c in claude for r in c[1]] + x_rows
-    all_pr = [p for c in claude for p in c[2]] + x_pr
+    # 통합본에는 사람 지시 + AI 가 만든 지시(agent-task, generated)를 넣는다.
+    # 날짜별 정리에서 bucket 으로 갈라 agent-tasks.* 로 분리된다.
+    # injected(도구가 주입한 스킬 본문 등)는 순수 노이즈라 제외한다.
+    all_pr = ([p for c in claude for p in c[2]]
+              + [p for p in x_all if p.get("bucket") != "injected"])
     if not all_rows:
         sys.exit("대상 경로에서 실행된 세션을 찾지 못했습니다. WORK_TARGETS 를 확인하세요.")
 

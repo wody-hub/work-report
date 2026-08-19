@@ -27,6 +27,7 @@ fi
 : "${WORK_DIR:?config.env 에 WORK_DIR 를 설정하세요 (결과를 둘 폴더)}"
 export WORK_TARGETS
 export WORK_TZ_OFFSET="${WORK_TZ_OFFSET:-9}"
+export WORK_MAX_CHARS="${WORK_MAX_CHARS:-10000}"
 
 EXPORT_DIR="${EXPORT_DIR:-$WORK_DIR/export}"
 BYDATE_DIR="${BYDATE_DIR:-$WORK_DIR/by-date}"

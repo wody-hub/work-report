@@ -9,7 +9,7 @@
   <OUT>/YYYY-MM-DD/
       instructions.md             그날 사람이 준 업무 지시 전문 (시간순)
       instructions.jsonl
-      agent-tasks.md|.jsonl       AI 가 하위 에이전트에 넘긴 작업지시 (있는 날만)
+      agent-tasks.md|.jsonl       AI 가 만든 지시 — agent-task, generated (있는 날만)
       sessions.csv                그날 지시가 있었던 세션 인덱스
   <OUT>/_reference/               날짜 폴더로 재현되지 않는 것만
       sessions-all.csv            전체 세션 (지시 없는 세션 포함)
@@ -110,7 +110,12 @@ def write_day_md(path, day, items, title, note=""):
             head = f"{dt:%H:%M} · {p['tool']} · `{short(p['cwd'])}`"
             if p.get("branch"):
                 head += f" · `{p['branch']}`"
-            fh.write(f"## {head}\n\n```\n{p['text'].strip()}\n```\n\n")
+            if p.get("bucket") not in (None, "human"):
+                head += f" · [{p['bucket']}]"
+            body = p["text"].strip()
+            if p.get("orig_chars"):
+                body += f"\n\n… (총 {p['orig_chars']:,}자 중 앞부분만. 나머지 생략)"
+            fh.write(f"## {head}\n\n```\n{body}\n```\n\n")
 
 
 index_rows = []
@@ -119,23 +124,31 @@ for day in sorted(by_date):
     # 사람이 직접 준 지시 vs AI 가 하위 에이전트에 넘긴 작업지시
     items = [x for x in allitems if x[1].get("bucket", "human") == "human"]
     agent = [x for x in allitems if x[1].get("bucket", "human") != "human"]
-    if not items:
-        items, agent = allitems, []
     ddir = os.path.join(OUT, day)
     os.makedirs(ddir, exist_ok=True)
 
+    # 사람 지시가 0건인 날도 폴더는 만든다 (AI 만 돌린 날이라는 사실 자체가 기록).
+    # 이때 non-human 을 instructions 로 옮기지 않는다 — 집계가 오염된다.
     with open(os.path.join(ddir, "instructions.jsonl"), "w", encoding="utf-8") as fh:
         for _dt, p in items:
             fh.write(json.dumps(p, ensure_ascii=False) + "\n")
-    write_day_md(os.path.join(ddir, "instructions.md"), day, items, "업무 지시")
+    if items:
+        write_day_md(os.path.join(ddir, "instructions.md"), day, items, "업무 지시")
+    else:
+        wd = WEEKDAYS[allitems[0][0].weekday()]
+        with open(os.path.join(ddir, "instructions.md"), "w", encoding="utf-8") as fh:
+            fh.write(f"# {day} ({wd}) 업무 지시 0건\n\n"
+                     "> 이 날 사람이 직접 준 지시는 없습니다. "
+                     "`agent-tasks.md` 를 참고하세요.\n")
 
     if agent:
         with open(os.path.join(ddir, "agent-tasks.jsonl"), "w", encoding="utf-8") as fh:
             for _dt, p in agent:
                 fh.write(json.dumps(p, ensure_ascii=False) + "\n")
         write_day_md(os.path.join(ddir, "agent-tasks.md"), day, agent, "에이전트 작업지시",
-                     "사람이 쓴 지시가 아니라, AI 가 하위 에이전트에게 넘긴 작업 지시입니다. "
-                     "실적 집계에서는 제외하세요.")
+                     "사람이 쓴 지시가 아닙니다. AI 가 하위 에이전트에 넘긴 작업 지시 "
+                     "(agent-task) 이거나, 다른 AI·도구가 생성해 넣은 프롬프트 "
+                     "(generated) 입니다. 실적 집계에서는 제외하세요.")
 
     sids = []
     for _d, p in allitems:
@@ -152,7 +165,7 @@ for day in sorted(by_date):
     tools = Counter(p["tool"] for _d, p in items)
     cwds = Counter(short(p["cwd"]) for _d, p in items)
     index_rows.append([
-        day, WEEKDAYS[items[0][0].weekday()], len(items),
+        day, WEEKDAYS[allitems[0][0].weekday()], len(items),
         tools.get("claude-code", 0), tools.get("codex", 0), len(agent), len(sids),
         f"{allitems[0][0]:%H:%M}", f"{allitems[-1][0]:%H:%M}",
         " / ".join(f"{k}({v})" for k, v in cwds.most_common(5)),
@@ -207,7 +220,7 @@ L += ["", "## 구조", "", "```",
       f"YYYY-MM-DD/                  날짜 폴더 {len(index_rows)}개 (계층 없음)",
       "  instructions.md            그날 사람이 준 업무 지시 전문, 시간순",
       "  instructions.jsonl         같은 내용 구조화 (tool/cwd/branch/timestamp/text)",
-      "  agent-tasks.md|.jsonl      AI 가 하위 에이전트에 넘긴 작업지시 (있는 날만)",
+      "  agent-tasks.md|.jsonl      AI 가 만든 지시 — agent-task, generated (있는 날만)",
       "  sessions.csv               그날 지시가 있었던 세션 인덱스",
       "_reference/",
       "  sessions-all.csv           전체 세션 인덱스 (지시 없는 세션 포함)",

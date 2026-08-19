@@ -328,10 +328,24 @@ $WORK_DIR/
 | 스킬 본문 주입 (`isMeta`) | 제외 | 시스템이 넣은 문서 |
 | 슬래시 커맨드, 중단 표시, 로컬 커맨드 출력 | 제외 | 배관 |
 | Codex 환경 컨텍스트 (`<environment_context>` 등) | 제외 | 배관 |
-| Codex 도구 주입 (`<skill>`, `<recommended_plugins>` 등) | `instructions-codex-nonhuman.*` | 사람이 안 씀 |
+| Codex 도구 주입 (`<skill>`, `<recommended_plugins>` 등) | `instructions-codex-nonhuman.*` | 순수 노이즈 |
 | AI → 하위 에이전트 작업지시 | `agent-tasks.*` | 사람 실적 아님 |
+| 다른 AI·도구가 생성한 프롬프트 | `agent-tasks.*` | 사람이 안 씀 |
 
 `instructions.jsonl` 의 `bucket` 필드가 `human` 인 것만 집계에 들어간다.
+
+| bucket | 뜻 | 어디에 |
+|---|---|---|
+| `human` | 사람이 직접 입력 | `instructions.*` |
+| `agent-task` | AI 가 하위 에이전트에 넘긴 지시 | `agent-tasks.*` |
+| `generated` | 다른 AI·도구가 만들어 넣은 프롬프트 (`# Cross-AI …`, `You are an …`) | `agent-tasks.*` |
+| `injected` | 도구가 주입한 스킬 본문 등 | 날짜 폴더에 없음 |
+
+### 길이 상한
+
+프롬프트에 소스코드나 계획서 전문을 붙여넣으면 그게 결과물에 그대로 실린다. 어떤 실측에서 지시문 6,131건 중 코드블록을 포함한 118건(1.9%)이 **전체 용량의 66%** 를 차지했다.
+
+`WORK_MAX_CHARS`(기본 10000)를 넘는 지시문은 잘라내고 `… (총 N자 중 앞부분만)` 을 붙인다. 무엇을 지시했는지는 앞부분에 담기므로 실적 판단에는 지장이 없고, 코드 유출 면적이 줄어든다. `0` 으로 두면 무제한.
 
 ---
 
