@@ -131,6 +131,21 @@ def short(cwd):
     return cwd
 
 
+def iso_local(ts):
+    """로그의 UTC 타임스탬프를 설정 시간대의 ISO 8601(오프셋 포함)로 바꾼다.
+
+    md 는 변환해 쓰는데 jsonl 이 UTC 원문을 담고 있으면, 같은 산출물 안에서
+    지시(UTC)와 커밋(로컬)이 9시간 어긋난다. 수집 시점에 통일한다.
+    """
+    if not ts:
+        return ts
+    try:
+        return (datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                .astimezone(TZ).isoformat())
+    except Exception:
+        return ts
+
+
 def kst(ts):
     if not ts:
         return ""
@@ -260,7 +275,8 @@ def scan_claude(label, target):
                         body, orig = clip(redact(t))
                         prompts.append(dict(tool="claude-code", scope=label,
                                             session_id=sid, kind=r["kind"],
-                                            cwd=o.get("cwd", ""), timestamp=ts,
+                                            cwd=o.get("cwd", ""),
+                                            timestamp=iso_local(ts),
                                             branch=o.get("gitBranch") or "",
                                             bucket=bucket, text=body,
                                             **({"orig_chars": orig} if orig else {})))
@@ -373,7 +389,8 @@ def scan_codex():
                                 r["title"] = re.sub(r"\s+", " ", t)[:120]
                     body, orig = clip(redact(t))
                     prompts.append(dict(tool="codex", scope=hit[0], session_id=sid,
-                                        kind=r["kind"], cwd=cwd, timestamp=ts,
+                                        kind=r["kind"], cwd=cwd,
+                                        timestamp=iso_local(ts),
                                         branch="", source=src, bucket=bucket,
                                         text=body,
                                         **({"orig_chars": orig} if orig else {})))

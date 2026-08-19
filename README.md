@@ -312,6 +312,8 @@ $WORK_DIR/
 |---|---|
 | `instructions.md` | 그날 지시 전문, 시간순. 제목이 `시각 · 도구 · 작업디렉토리 · git브랜치` |
 | `instructions.jsonl` | 같은 내용 구조화 (`tool`, `scope`, `cwd`, `branch`, `timestamp`, `bucket`, `text`) |
+
+`timestamp` 는 `WORK_TZ_OFFSET` 을 적용한 ISO 8601(오프셋 포함)이다. `commits.jsonl` 도 같은 기준이라 지시와 커밋을 바로 짝지을 수 있다.
 | `agent-tasks.md\|.jsonl` | AI 가 만든 지시 — `agent-task`, `generated` (있는 날만) |
 | `commits.csv` | 그날 내 git 커밋 (있는 날만) |
 | `sessions.csv` | 그날 지시가 있었던 세션 인덱스 |
